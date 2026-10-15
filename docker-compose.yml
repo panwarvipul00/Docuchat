@@ -1,0 +1,79 @@
+services:
+  db:
+    # Official pgvector image = Postgres 16 with the `vector` extension available.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: docuchat
+    # Not published to the host (avoids clashing with a local Postgres).
+    # Connect with: docker compose exec db psql -U postgres docuchat
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d docuchat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    env_file: .env
+    environment:
+      MEDIA_ROOT: /app/media
+    volumes:
+      - ./backend:/app
+      - media:/app/media
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: celery -A config worker --loglevel=info
+    env_file: .env
+    environment:
+      MEDIA_ROOT: /app/media
+    volumes:
+      - ./backend:/app
+      - media:/app/media  # shared with backend so the worker can read uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    env_file: .env
+    environment:
+      # Docker Desktop doesn't reliably forward file-change events into bind
+      # mounts, so poll for changes or hot reload serves stale modules.
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  media:

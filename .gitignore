@@ -1,0 +1,28 @@
+# Secrets: never commit real env files (the template is fine)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Django runtime data
+backend/media/
+backend/staticfiles/
+
+# Node / Next.js
+node_modules/
+.next/
+frontend/next-env.d.ts
+
+# Editors / OS / logs
+.vscode/
+.idea/
+.DS_Store
+*.log

@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+/*
+ * Theme: "Royal Violet + Amber" (light) and "Midnight Purple" (dark).
+ *
+ * Components use semantic names (bg-surface, text-muted, bg-primary...), never
+ * raw palette colors, so the whole theme is defined here. Violet is the brand
+ * color; amber is a sparing accent (citations, focus rings, in-progress state)
+ * because large yellow areas look loud and yellow text on white is unreadable.
+ *
+ * Dark mode follows the OS by default; the nav toggle can force light/dark via
+ * <html data-theme="light|dark"> (see ThemeToggle + the script in layout.tsx).
+ */
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-jakarta);
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-soft: var(--fg-soft);
+  --color-muted: var(--muted);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-strong: var(--primary-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+
+  --color-success-soft: var(--success-soft);
+  --color-success-fg: var(--success-fg);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+}
+
+:root {
+  color-scheme: light;
+  --bg: #faf7ff; /* faint lavender page background */
+  --surface: #ffffff;
+  --surface-muted: #f3eeff;
+  --border: #e9e1fb;
+  --border-strong: #d6c9f5;
+  --fg: #1e1b2e;
+  --fg-soft: #3f3a56;
+  --muted: #6b6585; /* 5.4:1 on --bg, passes WCAG AA */
+
+  --primary: #6d28d9; /* violet-700; white text on it is 7:1 */
+  --primary-hover: #5b21b6;
+  --primary-fg: #ffffff;
+  --primary-soft: #ede5fd;
+  --primary-strong: #5b21b6; /* violet text on soft violet backgrounds */
+
+  --accent: #f59e0b; /* amber-500: only ever behind/around dark text */
+  --accent-soft: #fef3c7;
+  --accent-fg: #78350f;
+
+  --success-soft: #d1fae5;
+  --success-fg: #065f46;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+  --danger-border: #fecaca;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #1e1b2e;
+    --surface: #2a2640;
+    --surface-muted: #332e4d;
+    --border: #3d3757;
+    --border-strong: #4c4569;
+    --fg: #f1eefa;
+    --fg-soft: #d9d3ec;
+    --muted: #a59fbf;
+
+    --primary: #a78bfa; /* lighter violet reads better on dark */
+    --primary-hover: #c4b5fd;
+    --primary-fg: #1e1b2e;
+    --primary-soft: #3b2f63;
+    --primary-strong: #c4b5fd;
+
+    --accent: #facc15; /* yellow pops on the dark background */
+    --accent-soft: #4a3f12;
+    --accent-fg: #fde68a;
+
+    --success-soft: #123d33;
+    --success-fg: #6ee7b7;
+    --danger: #fca5a5;
+    --danger-soft: #4a1d24;
+    --danger-border: #7f2d3a;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1e1b2e;
+  --surface: #2a2640;
+  --surface-muted: #332e4d;
+  --border: #3d3757;
+  --border-strong: #4c4569;
+  --fg: #f1eefa;
+  --fg-soft: #d9d3ec;
+  --muted: #a59fbf;
+
+  --primary: #a78bfa;
+  --primary-hover: #c4b5fd;
+  --primary-fg: #1e1b2e;
+  --primary-soft: #3b2f63;
+  --primary-strong: #c4b5fd;
+
+  --accent: #facc15;
+  --accent-soft: #4a3f12;
+  --accent-fg: #fde68a;
+
+  --success-soft: #123d33;
+  --success-fg: #6ee7b7;
+  --danger: #fca5a5;
+  --danger-soft: #4a1d24;
+  --danger-border: #7f2d3a;
+}
+
+body {
+  @apply bg-bg text-fg font-sans;
+}
+
+h1,
+h2,
+h3 {
+  @apply font-display tracking-tight;
+}
+
+/* Amber focus ring for keyboard users on every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

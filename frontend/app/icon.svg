@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- DocuChat favicon: same mark as <Logo />. Next.js serves app/icon.svg as the tab icon. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed" />
+      <stop offset="1" stop-color="#5b21b6" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="8" width="54" height="54" rx="14" fill="url(#tile)" />
+  <!-- Document page folding into a chat-bubble tail (BrandGlyph, scaled up and thickened). -->
+  <g transform="translate(9 15) scale(1.65)" fill="none" stroke="#ffffff" stroke-width="2.3"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 3h7l4 4v9a2 2 0 0 1-2 2h-5l-4 3v-3H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+    <path d="M9 9h6M9 12.5h4" />
+  </g>
+  <circle cx="54" cy="10" r="8" fill="#f59e0b" stroke="#ffffff" stroke-width="3" />
+</svg>
