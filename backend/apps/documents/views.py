@@ -10,8 +10,8 @@ from rest_framework.response import Response
 from apps.workspaces.models import WorkspaceMember
 from apps.workspaces.services import get_workspace_for_user, workspaces_for_user
 
-from .models import Document
-from .serializers import DocumentSerializer, DocumentUploadSerializer
+from .models import Chunk, Document
+from .serializers import ChunkSerializer, DocumentSerializer, DocumentUploadSerializer
 from .tasks import process_document
 
 
@@ -68,3 +68,17 @@ class DocumentDetailView(generics.RetrieveDestroyAPIView):
             raise PermissionDenied("Only the uploader or a workspace owner can delete this.")
         instance.file.delete(save=False)
         instance.delete()
+
+
+class ChunkDetailView(generics.RetrieveAPIView):
+    """GET one chunk's text. Citations store chunk ids, and clicking one in the UI
+    fetches the passage on demand (rather than copying every chunk's text into
+    each saved message)."""
+
+    serializer_class = ChunkSerializer
+
+    def get_object(self) -> Chunk:
+        chunks = Chunk.objects.filter(
+            document__workspace__in=workspaces_for_user(self.request.user)
+        ).select_related("document")
+        return get_object_or_404(chunks, pk=self.kwargs["pk"])

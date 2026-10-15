@@ -2,7 +2,7 @@ from pathlib import Path
 
 from rest_framework import serializers
 
-from .models import Document
+from .models import Chunk, Document
 from .validators import validate_upload
 
 
@@ -36,3 +36,15 @@ class DocumentUploadSerializer(serializers.Serializer):
         if not attrs.get("title"):
             attrs["title"] = Path(attrs["file"].name).stem[:255]
         return attrs
+
+
+class ChunkSerializer(serializers.ModelSerializer):
+    """The text behind a citation, so the UI can show the exact source passage."""
+
+    document_id = serializers.IntegerField(read_only=True)
+    document_title = serializers.CharField(source="document.title", read_only=True)
+
+    class Meta:
+        model = Chunk
+        fields = ["id", "document_id", "document_title", "page_number", "chunk_index", "content"]
+        read_only_fields = fields

@@ -11,14 +11,63 @@ export function Spinner({ className = "" }: { className?: string }) {
   );
 }
 
-export function ErrorBanner({ message }: { message: string | null }) {
+/** Grey placeholder block shown while content loads (less jumpy than a spinner). */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <span aria-hidden className={`block animate-pulse rounded-md bg-surface-muted ${className}`} />;
+}
+
+export function ErrorBanner({
+  message,
+  onRetry,
+  onDismiss,
+}: {
+  message: string | null;
+  onRetry?: () => void;
+  onDismiss?: () => void;
+}) {
   if (!message) return null;
   return (
     <div
       role="alert"
-      className="whitespace-pre-line rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger"
+      className="flex items-start gap-3 rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger"
     >
-      {message}
+      <span className="flex-1 whitespace-pre-line">{message}</span>
+      {onRetry && (
+        <button onClick={onRetry} className="shrink-0 font-semibold underline underline-offset-2">
+          Retry
+        </button>
+      )}
+      {onDismiss && (
+        <button onClick={onDismiss} aria-label="Dismiss" className="shrink-0 opacity-70 hover:opacity-100">
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Friendly placeholder for "nothing here yet", with an optional call to action. */
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center rounded-xl border border-dashed border-border-strong bg-surface px-6 py-12 text-center">
+      {icon && (
+        <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary-strong">
+          {icon}
+        </span>
+      )}
+      <p className="font-medium text-fg">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-sm text-muted">{description}</p>}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
@@ -43,14 +92,35 @@ export function StatusBadge({ status }: { status: DocumentStatus }) {
   );
 }
 
-/** Amber "[n] Title, p. N" chip used for answer citations. */
-export function CitationChip({ index, title, page }: { index: number; title: string; page: number }) {
+/** Amber "[n] Title, p. N" chip used for answer citations; clickable when onClick is set. */
+export function CitationChip({
+  index,
+  title,
+  page,
+  active = false,
+  onClick,
+}: {
+  index: number;
+  title: string;
+  page: number;
+  active?: boolean;
+  onClick?: () => void;
+}) {
   return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-xs text-accent-fg">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      aria-pressed={active}
+      title={`Show source: ${title}, page ${page}`}
+      className={`inline-flex max-w-full items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-xs text-accent-fg transition enabled:hover:ring-1 enabled:hover:ring-accent ${
+        active ? "ring-2 ring-accent" : ""
+      }`}
+    >
       <span className="font-semibold">[{index}]</span>
       <span className="truncate">{title}</span>
       <span className="shrink-0 opacity-80">p. {page}</span>
-    </span>
+    </button>
   );
 }
 

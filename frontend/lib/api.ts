@@ -61,6 +61,16 @@ export interface Citation {
   page: number;
 }
 
+/** The passage behind a citation (GET /chunks/{id}/). */
+export interface SourceChunk {
+  id: number;
+  document_id: number;
+  document_title: string;
+  page_number: number;
+  chunk_index: number;
+  content: string;
+}
+
 export interface Conversation {
   id: number;
   workspace: number;
@@ -394,6 +404,9 @@ export const api = {
       onProgress,
     );
   },
+  getChunk(id: number): Promise<SourceChunk> {
+    return request<SourceChunk>(`/chunks/${id}/`);
+  },
   getDocument(id: number): Promise<DocumentItem> {
     return request<DocumentItem>(`/documents/${id}/`);
   },
@@ -410,6 +423,12 @@ export const api = {
       method: "POST",
       json: { title },
     });
+  },
+  renameConversation(id: number, title: string): Promise<Conversation> {
+    return request<Conversation>(`/conversations/${id}/`, { method: "PATCH", json: { title } });
+  },
+  deleteConversation(id: number): Promise<null> {
+    return request<null>(`/conversations/${id}/`, { method: "DELETE" });
   },
   listMessages(conversationId: number): Promise<Message[]> {
     return request<Message[]>(`/conversations/${conversationId}/messages/`);

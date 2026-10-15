@@ -86,6 +86,29 @@ def test_chat_endpoints_require_auth(api_client, workspace, conversation):
     assert ask(api_client, conversation.id, "hi").status_code == 401
 
 
+def test_rename_and_delete_conversation(auth_client, conversation):
+    url = f"/api/conversations/{conversation.id}/"
+    res = auth_client.patch(url, {"title": "Refund policy"}, format="json")
+    assert res.status_code == 200 and res.data["title"] == "Refund policy"
+    Message.objects.create(conversation=conversation, role="user", content="hi")
+    assert auth_client.delete(url).status_code == 204
+    assert not Conversation.objects.exists()
+    assert not Message.objects.exists()  # messages cascade with the conversation
+
+
+def test_cannot_rename_or_delete_someone_elses_conversation(bob_client, api_client, conversation):
+    url = f"/api/conversations/{conversation.id}/"
+    assert bob_client.patch(url, {"title": "x"}, format="json").status_code == 404
+    assert bob_client.delete(url).status_code == 404
+    assert api_client.delete(url).status_code == 401
+    assert Conversation.objects.filter(pk=conversation.pk).exists()
+
+
+def test_conversation_detail_rejects_put(auth_client, conversation):
+    res = auth_client.put(f"/api/conversations/{conversation.id}/", {"title": "x"}, format="json")
+    assert res.status_code == 405
+
+
 def test_ask_validates_question(auth_client, conversation):
     assert ask(auth_client, conversation.id, "   ").status_code == 400
     assert ask(auth_client, conversation.id, "x" * 2001).status_code == 400
