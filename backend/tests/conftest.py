@@ -1,4 +1,5 @@
 import pytest
+from django.core.cache import cache
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
@@ -11,6 +12,16 @@ from services.llm import get_llm_provider
 def _media_root(tmp_path, settings):
     # Keep uploaded test files out of the real media directory.
     settings.MEDIA_ROOT = tmp_path / "media"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache(settings):
+    # Throttle counters live in the cache: use a private in-memory one, emptied
+    # for every test, so tests neither need Redis nor rate-limit each other.
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture(autouse=True)

@@ -107,6 +107,18 @@ MAX_SPREADSHEET_ROWS = 20_000
 # per file with a clear error message.
 DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE + 1024 * 1024
 
+# --- Cache ---
+# Redis, not the default per-process memory cache: throttle counters live here,
+# and with several gunicorn workers each would otherwise keep its own count
+# (3 workers = 3x the intended limit).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        "KEY_PREFIX": "docuchat",
+    }
+}
+
 # --- DRF / JWT ---
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -114,7 +126,36 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_PAGINATION_CLASS": None,
+    # Rate limiting. anon/user are blanket limits on every endpoint (by IP /
+    # by user id); scoped limits apply only to views that set `throttle_scope`.
+    # Expensive endpoints get tighter limits; see apps/*/throttles.py.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        # Generous: the documents page polls every 2s while files process.
+        "user": "300/min",
+        # Login + register, per IP: slows down password guessing.
+        "auth": "10/min",
+        # Each question = an embedding call + an LLM call with ~5k tokens of context.
+        "ask": "10/min",
+        # Each upload = parsing + embedding every chunk.
+        "upload": "30/hour",
+    },
+    # Proxies in front of gunicorn (Caddy in production = 1). DRF then reads the
+    # client IP from X-Forwarded-For; with 0 it uses the socket address. Must
+    # match reality: too high and clients can spoof their IP via the header,
+    # too low and every anonymous user shares the proxy's IP (and one limit).
+    "NUM_PROXIES": int(os.environ.get("DJANGO_NUM_PROXIES", "0")),
 }
+
+# Max LLM tokens (prompt + answer) per user per UTC day; 0 disables the cap.
+# Request limits alone don't bound cost, since questions vary a lot in size.
+# 200k is roughly 30-40 questions with full retrieved context.
+DAILY_TOKEN_BUDGET = int(os.environ.get("DAILY_TOKEN_BUDGET", "200000"))
 
 SIMPLE_JWT = {
     # Short-lived access token limits damage if one leaks; the frontend silently
@@ -127,7 +168,7 @@ SIMPLE_JWT = {
 # --- CORS ---
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 # Let the frontend read the server's file name on downloads (answer export).
-CORS_EXPOSE_HEADERS = ["Content-Disposition"]
+CORS_EXPOSE_HEADERS = ["Content-Disposition", "Retry-After"]
 
 # --- Production (behind a TLS-terminating reverse proxy, e.g. Caddy) ---
 # The Django admin's login form is CSRF-protected and checks the Origin header.
