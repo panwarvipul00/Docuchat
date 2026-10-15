@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 
 import { ChatComposer } from "@/components/ChatComposer";
 import { ChatTopBar, useConversations } from "@/components/ChatSidebar";
+import { AnswerModeToggle } from "@/components/AnswerModeToggle";
 import { DocumentScopePicker } from "@/components/DocumentScopePicker";
 import { DocumentIcon } from "@/components/icons";
 import { useWorkspaces } from "@/components/WorkspaceProvider";
 import { EmptyState, ErrorBanner, Logo, Skeleton, SUPPORTED_FILES } from "@/components/ui";
+import type { AnswerMode } from "@/lib/api";
 
 const SUGGESTIONS = [
   "Summarize the key points",
@@ -22,6 +24,7 @@ export default function NewChatPage() {
   const { startChat, documents, documentsError, reloadDocuments } = useConversations();
   const [question, setQuestion] = useState("");
   const [scope, setScope] = useState<number[]>([]);
+  const [answerMode, setAnswerMode] = useState<AnswerMode>("documents");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +44,7 @@ export default function NewChatPage() {
     setSending(true);
     setError(null);
     try {
-      await startChat(q, scope); // navigates to the new conversation
+      await startChat(q, scope, answerMode); // navigates to the new conversation
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start a conversation.");
       setQuestion(q);
@@ -134,12 +137,15 @@ export default function NewChatPage() {
           <ErrorBanner message={error} onDismiss={() => setError(null)} />
           {showComposer && (
             <>
-              <DocumentScopePicker
-                documents={documents ?? []}
-                selected={scope}
-                onChange={setScope}
-                disabled={sending}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <DocumentScopePicker
+                  documents={documents ?? []}
+                  selected={scope}
+                  onChange={setScope}
+                  disabled={sending}
+                />
+                <AnswerModeToggle value={answerMode} onChange={setAnswerMode} disabled={sending} />
+              </div>
               <ChatComposer
                 value={question}
                 onChange={setQuestion}
