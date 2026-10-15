@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.http import content_disposition_header
 from rest_framework import generics
 from rest_framework.request import Request
+from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
 from apps.workspaces.services import get_workspace_for_user, workspaces_for_user
@@ -16,6 +17,7 @@ from services.rag import DoneEvent, ErrorEvent, RagEvent, SourcesEvent, answer_q
 
 from .models import Conversation, Message
 from .serializers import AskSerializer, ConversationSerializer, MessageSerializer
+from .throttles import DailyTokenBudgetThrottle
 
 
 def user_conversations(request: Request) -> QuerySet[Conversation]:
@@ -128,7 +130,16 @@ def _to_sse(events: Iterator[RagEvent]) -> Iterator[str]:
 
 
 class AskView(APIView):
-    """POST {question} -> text/event-stream of: sources, token*, then done | error."""
+    """POST {question} -> text/event-stream of: sources, token*, then done | error.
+
+    Throttles run before any streaming starts, so a limited request gets a
+    normal 429 JSON response rather than an SSE error event.
+    """
+
+    throttle_scope = "ask"
+
+    def get_throttles(self) -> list[BaseThrottle]:
+        return [*super().get_throttles(), DailyTokenBudgetThrottle()]
 
     def post(self, request: Request, pk: int) -> StreamingHttpResponse:
         conversation = get_object_or_404(

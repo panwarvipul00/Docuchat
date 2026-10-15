@@ -178,7 +178,7 @@ GET    /api/messages/{id}/export/{docx|md}/  (download an answer as Word/Markdow
 - [ ] Hybrid search (Postgres full-text + vector, Reciprocal Rank Fusion)
 - [ ] Re-ranking step (optional)
 - [ ] Workspace sharing (invite members by email)
-- [ ] Per-user rate limiting (DRF throttling) and token usage tracking
+- [x] Per-user rate limiting (DRF throttling) and token usage tracking
 - [ ] Cache embeddings of repeated questions
 
 ### Phase 6 — Quality & Deployment (Week 6)

@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.throttling import BaseThrottle
 
 from apps.workspaces.models import WorkspaceMember
 from apps.workspaces.services import get_workspace_for_user, workspaces_for_user
@@ -13,6 +14,7 @@ from apps.workspaces.services import get_workspace_for_user, workspaces_for_user
 from .models import Chunk, Document
 from .serializers import ChunkSerializer, DocumentSerializer, DocumentUploadSerializer
 from .tasks import process_document
+from .throttles import UploadRateThrottle
 
 
 class WorkspaceDocumentListCreateView(generics.GenericAPIView):
@@ -20,6 +22,12 @@ class WorkspaceDocumentListCreateView(generics.GenericAPIView):
 
     parser_classes = [MultiPartParser, FormParser]
     serializer_class = DocumentSerializer
+
+    def get_throttles(self) -> list[BaseThrottle]:
+        throttles = super().get_throttles()
+        if self.request.method == "POST":
+            throttles.append(UploadRateThrottle())
+        return throttles
 
     def get(self, request: Request, workspace_id: int) -> Response:
         workspace = get_workspace_for_user(request.user, workspace_id)

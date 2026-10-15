@@ -18,6 +18,9 @@ x-backend-env: &backend-env
   DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/docuchat
   REDIS_URL: redis://redis:6379/0
   MEDIA_ROOT: /app/media
+  # Caddy is the one proxy in front: per-IP rate limits read the client IP
+  # from X-Forwarded-For instead of seeing every request as coming from Caddy.
+  DJANGO_NUM_PROXIES: "1"
 
 services:
   db:
