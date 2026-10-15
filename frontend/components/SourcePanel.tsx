@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { CloseIcon, DocumentIcon } from "@/components/icons";
-import { ErrorBanner, Skeleton } from "@/components/ui";
+import { ErrorBanner, Skeleton, sourceLocation } from "@/components/ui";
 import { api, ApiError, type Citation, type SourceChunk } from "@/lib/api";
 
 // Passages never change once ingested, so cache them for the whole session:
@@ -76,7 +76,9 @@ export function SourcePanel({ citation, onClose }: { citation: Citation; onClose
               <DocumentIcon size={15} className="shrink-0 text-primary" />
               <span className="truncate">{citation.title}</span>
             </p>
-            <p className="text-xs text-muted">Page {citation.page}</p>
+            <p className="text-xs capitalize text-muted">
+              {sourceLocation(citation.page, citation.file_type, "long") ?? "Table"}
+            </p>
           </div>
           <button
             onClick={onClose}

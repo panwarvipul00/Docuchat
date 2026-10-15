@@ -3,6 +3,7 @@
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { sourceLocation } from "@/components/ui";
 import type { Citation } from "@/lib/api";
 
 // One or more adjacent markers like "[3]", "[1, 2]" or "[1][2]" (with the
@@ -45,7 +46,9 @@ function CitationBadge({
   source?: Citation;
   onOpen?: (source: Citation) => void;
 }) {
-  const label = source ? `${source.title}, page ${source.page}` : `Source ${index}`;
+  const label = source
+    ? [source.title, sourceLocation(source.page, source.file_type, "long")].filter(Boolean).join(", ")
+    : `Source ${index}`;
   const clickable = Boolean(source && onOpen);
   return (
     <button

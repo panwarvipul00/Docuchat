@@ -39,7 +39,7 @@ def ingest_document(document_id: int) -> None:
 
         # Embedding is the slow, network-bound part: do it before opening the
         # DB transaction so we don't hold a transaction open during API calls.
-        vectors = embed_texts([c.content for c in chunks])
+        vectors = embed_texts([c.content for c in chunks], patient=True)
 
         with transaction.atomic():
             # Lock the row; if the user deleted the document mid-processing, stop.

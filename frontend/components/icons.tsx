@@ -137,6 +137,25 @@ export const RetryIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const CheckIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 6 9 17l-5-5" />
+  </Svg>
+);
+
+export const SearchIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.3-4.3" />
+  </Svg>
+);
+
+export const DownloadIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+  </Svg>
+);
+
 /** Brand glyph: a document page folding into a chat bubble tail. */
 export const BrandGlyph = (p: IconProps) => (
   <Svg {...p}>

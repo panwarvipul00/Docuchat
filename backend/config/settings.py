@@ -100,6 +100,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Uploads ---
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
+# Every row becomes embedded text, so cap spreadsheets: 20k rows is roughly
+# 1-2M tokens (a few cents with text-embedding-3-small) and a few minutes of work.
+MAX_SPREADSHEET_ROWS = 20_000
 # Let Django accept the multipart body; our own validator enforces MAX_UPLOAD_SIZE
 # per file with a clear error message.
 DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE + 1024 * 1024
@@ -123,6 +126,8 @@ SIMPLE_JWT = {
 
 # --- CORS ---
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+# Let the frontend read the server's file name on downloads (answer export).
+CORS_EXPOSE_HEADERS = ["Content-Disposition"]
 
 # --- Celery ---
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -157,6 +162,9 @@ EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL") or _DEFAULT_EMBEDDING_MODELS
 # Both default models can output 1536-dim vectors, matching the DB column.
 EMBEDDING_DIMENSIONS = 1536
 EMBEDDING_BATCH_SIZE = 64
+# Also cap each request's total tokens (16 chunks of ~500 tokens). Measured:
+# Gemini's free tier 429s on one ~32k-token request but accepts 8k-token ones.
+EMBEDDING_BATCH_TOKENS = 8_000
 
 # --- LLM / RAG ---
 # LLM_PROVIDER: "openai" | "gemini" | "groq" | "fake" (offline, for tests/local runs).
@@ -164,7 +172,7 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai")
 _DEFAULT_LLM_MODELS = {
     "openai": "gpt-4o-mini",
     "gemini": "gemini-2.5-flash",
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",  # Groq retired the Llama 3.3 models
     "fake": "fake",
 }
 LLM_MODEL = os.environ.get("LLM_MODEL") or _DEFAULT_LLM_MODELS.get(LLM_PROVIDER, "")

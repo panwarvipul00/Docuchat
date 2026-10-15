@@ -4,13 +4,16 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { AnswerDownload } from "@/components/AnswerDownload";
 import { ChatComposer } from "@/components/ChatComposer";
 import { ChatTopBar, useConversations } from "@/components/ChatSidebar";
+import { AnswerModeToggle } from "@/components/AnswerModeToggle";
+import { DocumentScopePicker } from "@/components/DocumentScopePicker";
 import { ChatIcon } from "@/components/icons";
 import { Markdown } from "@/components/Markdown";
 import { SourcePanel } from "@/components/SourcePanel";
 import { CitationChip, EmptyState, ErrorBanner, Logo, Skeleton } from "@/components/ui";
-import { api, ApiError, type Citation, type Message } from "@/lib/api";
+import { api, ApiError, type Citation, type ConversationPatch, type Message } from "@/lib/api";
 
 /** A message being streamed: shown like a Message but not yet saved. */
 interface PendingAnswer {
@@ -37,7 +40,13 @@ const citedIn = (content: string, sources: Citation[]) =>
 export default function ConversationPage() {
   const params = useParams<{ conversationId: string }>();
   const conversationId = Number(params.conversationId);
-  const { conversations, reload: reloadSidebar, takeFirstQuestion } = useConversations();
+  const {
+    conversations,
+    documents,
+    updateChat,
+    reload: reloadSidebar,
+    takeFirstQuestion,
+  } = useConversations();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -56,7 +65,17 @@ export default function ConversationPage() {
   const stickToBottom = useRef(true);
 
   const streaming = pendingQuestion !== null;
-  const title = conversations.find((c) => c.id === conversationId)?.title || "New conversation";
+  const conversation = conversations.find((c) => c.id === conversationId);
+  const title = conversation?.title || "New conversation";
+
+  async function changeSettings(patch: ConversationPatch) {
+    setError(null);
+    try {
+      await updateChat(conversationId, patch);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the chat settings.");
+    }
+  }
 
   const ask = useCallback(
     async (q: string) => {
@@ -228,6 +247,8 @@ export default function ConversationPage() {
               return (
                 <MessageBubble
                   key={key}
+                  // Negative ids are local copies of a stopped answer: not saved yet.
+                  downloadId={m.id > 0 ? m.id : undefined}
                   role={m.role}
                   content={m.content}
                   citations={m.citations}
@@ -260,6 +281,23 @@ export default function ConversationPage() {
             onRetry={failedQuestion && !streaming ? () => void ask(failedQuestion) : undefined}
             onDismiss={() => setError(null)}
           />
+          {conversation && (
+            <div className="flex flex-wrap items-center gap-2">
+              {documents && (
+                <DocumentScopePicker
+                  documents={documents}
+                  selected={conversation.document_ids}
+                  onChange={(ids) => void changeSettings({ document_ids: ids })}
+                  disabled={streaming}
+                />
+              )}
+              <AnswerModeToggle
+                value={conversation.answer_mode}
+                onChange={(mode) => void changeSettings({ answer_mode: mode })}
+                disabled={streaming}
+              />
+            </div>
+          )}
           <ChatComposer
             value={question}
             onChange={setQuestion}
@@ -270,7 +308,9 @@ export default function ConversationPage() {
             autoFocus
           />
           <p className="text-center text-[11px] text-muted">
-            Answers use only your documents. Click a citation to see the source passage.
+            {conversation?.answer_mode === "general"
+              ? "Cited parts come from your documents; general knowledge is labelled. Click a citation to see the source."
+              : "Answers use only your documents. Click a citation to see the source passage."}
           </p>
         </div>
       </div>
@@ -300,7 +340,10 @@ function MessageBubble({
   activeIndex = null,
   onCitationClick,
   streaming = false,
+  downloadId,
 }: {
+  /** Saved assistant message id; shows the Download menu when set. */
+  downloadId?: number;
   role: Message["role"];
   content: string;
   citations: Citation[];
@@ -346,12 +389,18 @@ function MessageBubble({
                     index={c.index}
                     title={c.title}
                     page={c.page}
+                    fileType={c.file_type}
                     active={activeIndex === c.index}
                     onClick={onCitationClick && (() => onCitationClick(c))}
                   />
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+        {downloadId !== undefined && (
+          <div className="-mb-1.5 mt-3 flex border-t border-border pt-2">
+            <AnswerDownload messageId={downloadId} />
           </div>
         )}
       </div>

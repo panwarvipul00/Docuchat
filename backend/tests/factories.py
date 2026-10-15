@@ -2,6 +2,7 @@
 
 import io
 
+import openpyxl
 import pymupdf
 from docx import Document as DocxDocument
 from docx.enum.text import WD_BREAK
@@ -47,4 +48,17 @@ def make_docx(pages: list[list[str]], table: list[list[str]] | None = None) -> b
                 t.cell(r, c).text = value
     buf = io.BytesIO()
     doc.save(buf)
+    return buf.getvalue()
+
+
+def make_xlsx(sheets: dict[str, list[list[object]]]) -> bytes:
+    """{sheet title: rows} -> .xlsx bytes."""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for title, rows in sheets.items():
+        ws = wb.create_sheet(title)
+        for row in rows:
+            ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
     return buf.getvalue()

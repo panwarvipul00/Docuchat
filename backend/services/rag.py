@@ -20,6 +20,7 @@ from services.retrieval import RetrievedChunk, vector_search
 logger = logging.getLogger(__name__)
 
 NOT_FOUND_ANSWER = "I couldn't find this in your documents."
+NOT_FOUND_SELECTED_ANSWER = "I couldn't find this in the selected documents."
 
 # Prompt design notes:
 # - Grounding: the model must answer only from the numbered sources, with an
@@ -29,14 +30,39 @@ NOT_FOUND_ANSWER = "I couldn't find this in your documents."
 #   us to parse back into {document, page} after the stream finishes.
 # - Prompt injection: uploaded documents are untrusted input. We tell the model
 #   source text is reference material, never instructions to follow.
-SYSTEM_PROMPT = f"""You are DocuChat, an assistant that answers questions using ONLY the \
+# - Answer modes: "documents" (default) is strict grounding. "general" lets the
+#   model fill gaps from its own knowledge, but only inside a labelled
+#   blockquote and never with a citation number, so the UI and the reader can
+#   always tell what is backed by the user's files and what isn't.
+GENERAL_LABEL = "General knowledge (not from your documents):"
+
+_DOCUMENTS_ONLY_RULES = f"""You are DocuChat, an assistant that answers questions using ONLY the \
 numbered sources provided in the user's message.
 
 Rules:
 - Use only information from the sources. Do not use outside knowledge.
 - If the sources do not contain the answer, reply exactly: "{NOT_FOUND_ANSWER}"
-- Cite sources with their number, like [1] or [2][3], placed at the end of the sentence, \
-paragraph or list item they support.
+- If the message is only a greeting or thanks, reply in one friendly sentence and invite \
+a question about their documents.
+"""
+
+_GENERAL_RULES = f"""You are DocuChat, an assistant that answers questions about the user's \
+documents, using the numbered sources provided in the user's message first and your own \
+general knowledge only to fill gaps.
+
+Rules:
+- Prefer the sources. Everything taken from them must be cited as below.
+- If the sources don't cover the question (or only partly), you may answer from general \
+knowledge, but put that part in a Markdown blockquote whose first line is \
+"> **{GENERAL_LABEL}**", with every line of it starting with "> ". Never put citation \
+numbers in that block, and never present general knowledge as coming from the documents.
+- If the sources contain nothing relevant, say so in one sentence, then give the \
+general-knowledge answer in that blockquote.
+- If the message is only a greeting, thanks or small talk, just reply naturally and briefly.
+"""
+
+_COMMON_RULES = """- Cite sources with their number, like [1] or [2][3], placed at the end \
+of the sentence, paragraph or list item they support.
 - Don't repeat the same citation on every line: if a whole list or section comes from \
 one source, cite it once (e.g. at the end of the sentence introducing the list).
 - Never invent a citation number that isn't in the sources.
@@ -47,7 +73,19 @@ Formatting (Markdown):
 - Start with a one- or two-sentence direct answer.
 - For longer answers, group details under short `###` headings and use bullet lists; \
 use **bold** for key terms or labels, and a table when comparing items.
-- Keep it concise: no filler, no repeating the question."""
+- Keep it concise: no filler, no repeating the question.
+
+Documents: if the user asks you to create, write or draft a document, report, summary, \
+notes, FAQ, letter or similar, write the complete document instead of a short answer: \
+start with a `# Title` line, use `##` section headings, and cover everything the sources \
+support. The rules above still apply: facts from the sources are cited. \
+The user can download it as a Word file, so don't say you can't create files."""
+
+SYSTEM_PROMPTS = {
+    Conversation.AnswerMode.DOCUMENTS: _DOCUMENTS_ONLY_RULES + _COMMON_RULES,
+    Conversation.AnswerMode.GENERAL: _GENERAL_RULES + _COMMON_RULES,
+}
+SYSTEM_PROMPT = SYSTEM_PROMPTS[Conversation.AnswerMode.DOCUMENTS]
 
 
 # ---------- Events ----------
@@ -85,18 +123,29 @@ def source_dict(index: int, chunk: RetrievedChunk) -> dict:
         "document_id": chunk.document_id,
         "chunk_id": chunk.chunk_id,
         "title": chunk.title,
+        "file_type": chunk.file_type,
         "page": chunk.page,
     }
 
 
+def location(chunk: RetrievedChunk) -> str:
+    """Where a chunk is in its document, in words the model can cite back."""
+    if chunk.file_type == "csv":
+        return "table"
+    return f"{'sheet' if chunk.file_type == 'xlsx' else 'page'} {chunk.page}"
+
+
 def format_context(sources: Sequence[RetrievedChunk]) -> str:
     return "\n\n".join(
-        f"[{i}] {s.title} — page {s.page}\n{s.content}" for i, s in enumerate(sources, start=1)
+        f"[{i}] {s.title} — {location(s)}\n{s.content}" for i, s in enumerate(sources, start=1)
     )
 
 
 def build_messages(
-    question: str, sources: Sequence[RetrievedChunk], history: Sequence[Message]
+    question: str,
+    sources: Sequence[RetrievedChunk],
+    history: Sequence[Message],
+    mode: str = Conversation.AnswerMode.DOCUMENTS,
 ) -> list[ChatMessage]:
     """System rules, then prior turns, then one user turn holding context + question.
 
@@ -104,10 +153,14 @@ def build_messages(
     turns: it lets the model resolve follow-ups ("what about the second one?")
     without re-sending thousands of tokens of old context.
     """
-    messages = [ChatMessage("system", SYSTEM_PROMPT)]
+    messages = [ChatMessage("system", SYSTEM_PROMPTS[mode])]
     messages += [ChatMessage(m.role, m.content) for m in history]  # type: ignore[arg-type]
     messages.append(
-        ChatMessage("user", f"Sources:\n\n{format_context(sources)}\n\nQuestion: {question}")
+        ChatMessage(
+            "user",
+            f"Sources:\n\n{format_context(sources) or '(no relevant sources found)'}"
+            f"\n\nQuestion: {question}",
+        )
     )
     return messages
 
@@ -149,9 +202,19 @@ def answer_question(conversation: Conversation, question: str) -> Iterator[RagEv
     user_msg = Message.objects.create(
         conversation=conversation, role=Message.Role.USER, content=question
     )
-    if not conversation.title:
+    titled_by_question = not conversation.title
+    if titled_by_question:
         conversation.title = question[:80]
     conversation.save(update_fields=["title", "updated_at"])
+
+    def discard_question() -> None:
+        # The question failed before any answer text: remove it, so retrying
+        # doesn't leave a trail of unanswered duplicates that also pollute the
+        # history sent with later questions.
+        user_msg.delete()
+        if titled_by_question and not conversation.messages.exists():
+            conversation.title = ""
+            conversation.save(update_fields=["title"])
 
     parts: list[str] = []
     sources: list[RetrievedChunk] = []
@@ -178,15 +241,22 @@ def answer_question(conversation: Conversation, question: str) -> Iterator[RagEv
 
     try:
         [query_vec] = embed_texts([question])
-        sources = vector_search(conversation.workspace, query_vec, k=settings.RAG_TOP_K)
+        scope = [d.pk for d in conversation.documents.all()]
+        sources = vector_search(
+            conversation.workspace, query_vec, k=settings.RAG_TOP_K, document_ids=scope
+        )
         yield SourcesEvent([source_dict(i, s) for i, s in enumerate(sources, start=1)])
 
-        if not sources:
-            # Nothing indexed in this workspace: answer directly, skip the LLM call.
-            parts.append(NOT_FOUND_ANSWER)
-            yield TokenEvent(NOT_FOUND_ANSWER)
+        general = conversation.answer_mode == Conversation.AnswerMode.GENERAL
+        if not sources and not general:
+            # Nothing indexed in scope: answer directly, skip the LLM call.
+            answer = NOT_FOUND_SELECTED_ANSWER if scope else NOT_FOUND_ANSWER
+            parts.append(answer)
+            yield TokenEvent(answer)
         else:
-            prompt = build_messages(question, sources, _history(conversation, user_msg.id))
+            prompt = build_messages(
+                question, sources, _history(conversation, user_msg.id), conversation.answer_mode
+            )
             for event in get_llm_provider().stream_chat(prompt):
                 if isinstance(event, TextDelta):
                     parts.append(event.text)
@@ -200,9 +270,13 @@ def answer_question(conversation: Conversation, question: str) -> Iterator[RagEv
 
     except (EmbeddingError, LLMError) as exc:
         logger.warning("RAG answer failed for conversation %s: %s", conversation.id, exc)
+        if not "".join(parts).strip():
+            discard_question()
         yield ErrorEvent(str(exc))
     except Exception:
         logger.exception("RAG answer crashed for conversation %s", conversation.id)
+        if not "".join(parts).strip():
+            discard_question()
         yield ErrorEvent("Something went wrong while generating the answer.")
     finally:
         # Covers errors and client disconnects (GeneratorExit) after partial output.

@@ -4,6 +4,7 @@ from .views import (
     AskView,
     ConversationDetailView,
     ConversationMessageListView,
+    MessageExportView,
     WorkspaceConversationListCreateView,
 )
 
@@ -20,4 +21,5 @@ urlpatterns = [
         name="conversation-messages",
     ),
     path("conversations/<int:pk>/ask/", AskView.as_view(), name="conversation-ask"),
+    path("messages/<int:pk>/export/<str:fmt>/", MessageExportView.as_view(), name="message-export"),
 ]

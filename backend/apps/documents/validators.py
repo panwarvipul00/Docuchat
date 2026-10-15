@@ -17,15 +17,25 @@ EXTENSION_TO_TYPE = {
     ".pdf": Document.FileType.PDF,
     ".docx": Document.FileType.DOCX,
     ".txt": Document.FileType.TXT,
+    ".xlsx": Document.FileType.XLSX,
+    ".csv": Document.FileType.CSV,
 }
+
+# Formats people often try that we can't read, with what to do instead.
+UNSUPPORTED_HINTS = {
+    ".xls": "Old .xls files aren't supported. In Excel use File > Save As > .xlsx.",
+    ".doc": "Old .doc files aren't supported. In Word use File > Save As > .docx.",
+}
+
+SUPPORTED_LABEL = "PDF, DOCX, TXT, XLSX, or CSV"
 
 
 def _looks_like(file_type: str, head: bytes) -> bool:
     if file_type == Document.FileType.PDF:
         return head.startswith(b"%PDF-")
-    if file_type == Document.FileType.DOCX:
-        return head.startswith(b"PK\x03\x04")  # DOCX is a zip archive
-    if file_type == Document.FileType.TXT:
+    if file_type in (Document.FileType.DOCX, Document.FileType.XLSX):
+        return head.startswith(b"PK\x03\x04")  # both are zip archives
+    if file_type in (Document.FileType.TXT, Document.FileType.CSV):
         try:
             head.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -44,9 +54,11 @@ def validate_upload(file: UploadedFile) -> str:
         max_mb = settings.MAX_UPLOAD_SIZE // (1024 * 1024)
         raise ValidationError({"file": f"File is too large (max {max_mb} MB)."})
 
-    file_type = EXTENSION_TO_TYPE.get(Path(file.name).suffix.lower())
+    suffix = Path(file.name).suffix.lower()
+    file_type = EXTENSION_TO_TYPE.get(suffix)
     if file_type is None:
-        raise ValidationError({"file": "Unsupported file type. Upload a PDF, DOCX, or TXT file."})
+        hint = UNSUPPORTED_HINTS.get(suffix, f"Upload a {SUPPORTED_LABEL} file.")
+        raise ValidationError({"file": f"Unsupported file type. {hint}"})
 
     head = file.read(2048)
     file.seek(0)

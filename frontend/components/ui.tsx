@@ -1,5 +1,22 @@
 import { BrandGlyph } from "@/components/icons";
-import type { DocumentStatus } from "@/lib/api";
+import type { DocumentFileType, DocumentStatus } from "@/lib/api";
+
+/** File types users can upload; mirrors the backend validator. */
+export const SUPPORTED_FILES = "PDF, DOCX, TXT, XLSX, or CSV";
+
+/**
+ * Where a citation points, in words: "p. 3" / "page 3" for documents,
+ * "sheet 2" for Excel. A CSV is a single table, so it has no location.
+ */
+export function sourceLocation(
+  page: number,
+  fileType?: DocumentFileType,
+  style: "short" | "long" = "short",
+): string | null {
+  if (fileType === "csv") return null;
+  if (fileType === "xlsx") return `sheet ${page}`;
+  return style === "short" ? `p. ${page}` : `page ${page}`;
+}
 
 export function Spinner({ className = "" }: { className?: string }) {
   return (
@@ -97,12 +114,14 @@ export function CitationChip({
   index,
   title,
   page,
+  fileType,
   active = false,
   onClick,
 }: {
   index: number;
   title: string;
   page: number;
+  fileType?: DocumentFileType;
   active?: boolean;
   onClick?: () => void;
 }) {
@@ -112,14 +131,16 @@ export function CitationChip({
       onClick={onClick}
       disabled={!onClick}
       aria-pressed={active}
-      title={`Show source: ${title}, page ${page}`}
+      title={`Show source: ${[title, sourceLocation(page, fileType, "long")].filter(Boolean).join(", ")}`}
       className={`inline-flex max-w-full items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-xs text-accent-fg transition enabled:hover:ring-1 enabled:hover:ring-accent ${
         active ? "ring-2 ring-accent" : ""
       }`}
     >
       <span className="font-semibold">[{index}]</span>
       <span className="truncate">{title}</span>
-      <span className="shrink-0 opacity-80">p. {page}</span>
+      {sourceLocation(page, fileType) && (
+        <span className="shrink-0 opacity-80">{sourceLocation(page, fileType)}</span>
+      )}
     </button>
   );
 }

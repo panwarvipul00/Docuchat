@@ -12,7 +12,13 @@ from typing import Protocol
 
 from django.conf import settings
 
-from services.provider_errors import GEMINI_BASE_URL, call_with_retries, friendly_message
+from services.chunking import count_tokens
+from services.provider_errors import (
+    GEMINI_BASE_URL,
+    PATIENT_RETRIES,
+    call_with_retries,
+    friendly_message,
+)
 
 
 class EmbeddingError(Exception):
@@ -22,8 +28,10 @@ class EmbeddingError(Exception):
 class EmbeddingProvider(Protocol):
     dimensions: int
 
-    def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        """Embed a batch of texts; returns one vector per input, in order."""
+    def embed(self, texts: Sequence[str], patient: bool = False) -> list[list[float]]:
+        """Embed a batch of texts; returns one vector per input, in order.
+
+        `patient` retries rate limits for ~90s instead of ~7s (background jobs)."""
         ...
 
 
@@ -52,14 +60,15 @@ class OpenAICompatibleEmbeddingProvider:
         self.dimensions = dimensions
         self.provider_name = provider_name
 
-    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+    def embed(self, texts: Sequence[str], patient: bool = False) -> list[list[float]]:
         if not texts:
             return []
         try:
             res = call_with_retries(
                 lambda: self._client.embeddings.create(
                     model=self.model, input=list(texts), dimensions=self.dimensions
-                )
+                ),
+                **(PATIENT_RETRIES if patient else {}),
             )
         except Exception as exc:
             raise EmbeddingError(friendly_message(exc, self.provider_name)) from exc
@@ -90,7 +99,7 @@ class FakeEmbeddingProvider:
     def __init__(self, dimensions: int) -> None:
         self.dimensions = dimensions
 
-    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+    def embed(self, texts: Sequence[str], patient: bool = False) -> list[list[float]]:
         return [self._embed_one(t) for t in texts]
 
     def _embed_one(self, text: str) -> list[float]:
@@ -123,22 +132,42 @@ def get_embedding_provider() -> EmbeddingProvider:
     raise EmbeddingError(f"Unknown EMBEDDING_PROVIDER: {name!r}")
 
 
-def batched(items: Sequence[str], size: int) -> Iterator[Sequence[str]]:
-    for i in range(0, len(items), size):
-        yield items[i : i + size]
+def batched(
+    items: Sequence[str], size: int, max_tokens: int | None = None
+) -> Iterator[Sequence[str]]:
+    """Consecutive slices of at most `size` items and (if set) `max_tokens` tokens.
+
+    A single item over `max_tokens` still goes out alone rather than being dropped.
+    """
+    start, tokens = 0, 0
+    for i, item in enumerate(items):
+        n = count_tokens(item) if max_tokens else 0
+        if i > start and (i - start >= size or (max_tokens and tokens + n > max_tokens)):
+            yield items[start:i]
+            start, tokens = i, 0
+        tokens += n
+    if start < len(items):
+        yield items[start:]
 
 
-def embed_texts(texts: Sequence[str], batch_size: int | None = None) -> list[list[float]]:
+def embed_texts(
+    texts: Sequence[str], batch_size: int | None = None, patient: bool = False
+) -> list[list[float]]:
     """Embed many texts in batches.
 
-    Batching (64 per request by default) cuts HTTP round-trips ~64x versus one
-    call per chunk while keeping each request well under the API's input limits.
+    Batching cuts HTTP round-trips ~64x versus one call per chunk. Batches are
+    capped by tokens as well as count: Gemini's free tier rejects a single
+    request of ~32k tokens (64 full chunks) with a 429 that no retry can fix,
+    while the same text split into ~8k-token requests goes through.
+
+    `patient=True` (document ingestion) waits out per-minute rate limits
+    instead of failing; questions keep the short retry so chat stays snappy.
     """
     provider = get_embedding_provider()
     size = batch_size or settings.EMBEDDING_BATCH_SIZE
     vectors: list[list[float]] = []
-    for batch in batched(texts, size):
-        result = provider.embed(batch)
+    for batch in batched(texts, size, settings.EMBEDDING_BATCH_TOKENS):
+        result = provider.embed(batch, patient=patient)
         if len(result) != len(batch):
             raise EmbeddingError(f"Expected {len(batch)} embeddings, got {len(result)}")
         vectors.extend(result)

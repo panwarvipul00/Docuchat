@@ -66,7 +66,7 @@ export function ChatComposer({
             if (canSend) onSubmit();
           }
         }}
-        className="max-h-[220px] flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted disabled:opacity-60"
+        className="no-focus-ring max-h-[220px] flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted disabled:opacity-60"
       />
       {streaming ? (
         <button
