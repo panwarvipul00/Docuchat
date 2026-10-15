@@ -5,6 +5,10 @@ from apps.workspaces.models import Workspace
 
 
 class Conversation(models.Model):
+    class AnswerMode(models.TextChoices):
+        DOCUMENTS = "documents", "Documents only"
+        GENERAL = "general", "Documents + general knowledge"
+
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="conversations")
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="conversations"
@@ -15,6 +19,11 @@ class Conversation(models.Model):
     # reload and follow-up questions stay on the same files.
     documents = models.ManyToManyField(
         "documents.Document", blank=True, related_name="conversations"
+    )
+    # "documents": answer strictly from the files. "general": may also use the
+    # model's own knowledge, clearly labelled (see services/rag.py).
+    answer_mode = models.CharField(
+        max_length=20, choices=AnswerMode.choices, default=AnswerMode.DOCUMENTS
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

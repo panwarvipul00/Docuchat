@@ -74,12 +74,16 @@ export interface SourceChunk {
   content: string;
 }
 
+/** "documents": answers only from files. "general": may add labelled general knowledge. */
+export type AnswerMode = "documents" | "general";
+
 export interface Conversation {
   id: number;
   workspace: number;
   title: string;
   /** Documents this chat searches; empty = every ready document in the workspace. */
   document_ids: number[];
+  answer_mode: AnswerMode;
   created_at: string;
   updated_at: string;
 }
@@ -241,6 +245,9 @@ async function request<T>(path: string, opts: RequestOptions = {}, retried = fal
 }
 
 export type ExportFormat = "docx" | "md";
+
+/** Editable conversation settings (PATCH /conversations/{id}/). */
+export type ConversationPatch = Partial<Pick<Conversation, "title" | "document_ids" | "answer_mode">>;
 
 /** A downloaded file: its contents and the name the server suggests. */
 export interface DownloadedFile {
@@ -473,16 +480,17 @@ export const api = {
   listConversations(workspaceId: number): Promise<Conversation[]> {
     return request<Conversation[]>(`/workspaces/${workspaceId}/conversations/`);
   },
-  createConversation(workspaceId: number, documentIds: number[] = []): Promise<Conversation> {
+  createConversation(
+    workspaceId: number,
+    documentIds: number[] = [],
+    answerMode: AnswerMode = "documents",
+  ): Promise<Conversation> {
     return request<Conversation>(`/workspaces/${workspaceId}/conversations/`, {
       method: "POST",
-      json: { document_ids: documentIds },
+      json: { document_ids: documentIds, answer_mode: answerMode },
     });
   },
-  updateConversation(
-    id: number,
-    patch: { title?: string; document_ids?: number[] },
-  ): Promise<Conversation> {
+  updateConversation(id: number, patch: ConversationPatch): Promise<Conversation> {
     return request<Conversation>(`/conversations/${id}/`, { method: "PATCH", json: patch });
   },
   deleteConversation(id: number): Promise<null> {

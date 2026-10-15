@@ -172,7 +172,7 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai")
 _DEFAULT_LLM_MODELS = {
     "openai": "gpt-4o-mini",
     "gemini": "gemini-2.5-flash",
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",  # Groq retired the Llama 3.3 models
     "fake": "fake",
 }
 LLM_MODEL = os.environ.get("LLM_MODEL") or _DEFAULT_LLM_MODELS.get(LLM_PROVIDER, "")

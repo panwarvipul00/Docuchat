@@ -18,7 +18,15 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Conversation
-        fields = ["id", "workspace", "title", "document_ids", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "workspace",
+            "title",
+            "document_ids",
+            "answer_mode",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "workspace", "created_at", "updated_at"]
         extra_kwargs = {"title": {"required": False}}
 

@@ -15,7 +15,13 @@ import {
 import { CloseIcon, MenuIcon, PencilIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { ErrorBanner, Skeleton } from "@/components/ui";
 import { useWorkspaces } from "@/components/WorkspaceProvider";
-import { api, type Conversation, type DocumentItem } from "@/lib/api";
+import {
+  api,
+  type AnswerMode,
+  type Conversation,
+  type ConversationPatch,
+  type DocumentItem,
+} from "@/lib/api";
 
 // ---------- Shared conversation state ----------
 
@@ -29,9 +35,9 @@ interface ConversationsContextValue {
   documentsError: string | null;
   reloadDocuments: () => Promise<void>;
   /** Create a conversation and open it; `question` is asked as soon as it loads. */
-  startChat: (question: string, documentIds: number[]) => Promise<void>;
-  /** Change which documents a conversation searches ([] = all). */
-  setScope: (id: number, documentIds: number[]) => Promise<void>;
+  startChat: (question: string, documentIds: number[], answerMode: AnswerMode) => Promise<void>;
+  /** Save chat settings: which documents it searches ([] = all), answer mode, title. */
+  updateChat: (id: number, patch: ConversationPatch) => Promise<void>;
   /** The question passed to startChat for this conversation (returned once). */
   takeFirstQuestion: (conversationId: number) => string | null;
   rename: (id: number, title: string) => Promise<void>;
@@ -109,9 +115,9 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   }, [reload, workspaceId, router]);
 
   const startChat = useCallback(
-    async (question: string, documentIds: number[]) => {
+    async (question: string, documentIds: number[], answerMode: AnswerMode) => {
       if (!workspaceId) throw new Error("No workspace selected.");
-      const conv = await api.createConversation(workspaceId, documentIds);
+      const conv = await api.createConversation(workspaceId, documentIds, answerMode);
       firstQuestion.current = { id: conv.id, question };
       setConversations((prev) => [conv, ...prev]);
       router.push(`/chat/${conv.id}`);
@@ -131,8 +137,8 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     setConversations((prev) => prev.map((c) => (c.id === id ? updated : c)));
   }, []);
 
-  const setScope = useCallback(async (id: number, documentIds: number[]) => {
-    const updated = await api.updateConversation(id, { document_ids: documentIds });
+  const updateChat = useCallback(async (id: number, patch: ConversationPatch) => {
+    const updated = await api.updateConversation(id, patch);
     setConversations((prev) => prev.map((c) => (c.id === id ? updated : c)));
   }, []);
 
@@ -151,7 +157,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
       documentsError,
       reloadDocuments,
       startChat,
-      setScope,
+      updateChat,
       takeFirstQuestion,
       rename,
       remove,
@@ -167,7 +173,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
       documentsError,
       reloadDocuments,
       startChat,
-      setScope,
+      updateChat,
       takeFirstQuestion,
       rename,
       remove,

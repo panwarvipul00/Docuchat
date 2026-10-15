@@ -7,12 +7,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { AnswerDownload } from "@/components/AnswerDownload";
 import { ChatComposer } from "@/components/ChatComposer";
 import { ChatTopBar, useConversations } from "@/components/ChatSidebar";
+import { AnswerModeToggle } from "@/components/AnswerModeToggle";
 import { DocumentScopePicker } from "@/components/DocumentScopePicker";
 import { ChatIcon } from "@/components/icons";
 import { Markdown } from "@/components/Markdown";
 import { SourcePanel } from "@/components/SourcePanel";
 import { CitationChip, EmptyState, ErrorBanner, Logo, Skeleton } from "@/components/ui";
-import { api, ApiError, type Citation, type Message } from "@/lib/api";
+import { api, ApiError, type Citation, type ConversationPatch, type Message } from "@/lib/api";
 
 /** A message being streamed: shown like a Message but not yet saved. */
 interface PendingAnswer {
@@ -42,7 +43,7 @@ export default function ConversationPage() {
   const {
     conversations,
     documents,
-    setScope,
+    updateChat,
     reload: reloadSidebar,
     takeFirstQuestion,
   } = useConversations();
@@ -67,12 +68,12 @@ export default function ConversationPage() {
   const conversation = conversations.find((c) => c.id === conversationId);
   const title = conversation?.title || "New conversation";
 
-  async function changeScope(ids: number[]) {
+  async function changeSettings(patch: ConversationPatch) {
     setError(null);
     try {
-      await setScope(conversationId, ids);
+      await updateChat(conversationId, patch);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not change the documents.");
+      setError(err instanceof Error ? err.message : "Could not save the chat settings.");
     }
   }
 
@@ -280,13 +281,22 @@ export default function ConversationPage() {
             onRetry={failedQuestion && !streaming ? () => void ask(failedQuestion) : undefined}
             onDismiss={() => setError(null)}
           />
-          {conversation && documents && (
-            <DocumentScopePicker
-              documents={documents}
-              selected={conversation.document_ids}
-              onChange={(ids) => void changeScope(ids)}
-              disabled={streaming}
-            />
+          {conversation && (
+            <div className="flex flex-wrap items-center gap-2">
+              {documents && (
+                <DocumentScopePicker
+                  documents={documents}
+                  selected={conversation.document_ids}
+                  onChange={(ids) => void changeSettings({ document_ids: ids })}
+                  disabled={streaming}
+                />
+              )}
+              <AnswerModeToggle
+                value={conversation.answer_mode}
+                onChange={(mode) => void changeSettings({ answer_mode: mode })}
+                disabled={streaming}
+              />
+            </div>
           )}
           <ChatComposer
             value={question}
@@ -298,7 +308,9 @@ export default function ConversationPage() {
             autoFocus
           />
           <p className="text-center text-[11px] text-muted">
-            Answers use only your documents. Click a citation to see the source passage.
+            {conversation?.answer_mode === "general"
+              ? "Cited parts come from your documents; general knowledge is labelled. Click a citation to see the source."
+              : "Answers use only your documents. Click a citation to see the source passage."}
           </p>
         </div>
       </div>
