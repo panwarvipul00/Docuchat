@@ -10,6 +10,12 @@ class Conversation(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="conversations"
     )
     title = models.CharField(max_length=200, blank=True)
+    # Optional scope: if set, questions only search these documents; empty means
+    # the whole workspace. Stored on the conversation so the choice survives a
+    # reload and follow-up questions stay on the same files.
+    documents = models.ManyToManyField(
+        "documents.Document", blank=True, related_name="conversations"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

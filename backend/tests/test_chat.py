@@ -109,6 +109,59 @@ def test_conversation_detail_rejects_put(auth_client, conversation):
     assert res.status_code == 405
 
 
+def test_conversation_document_scope(auth_client, workspace, user):
+    a = add_document(workspace, user, ["alpha"], title="A")
+    b = add_document(workspace, user, ["beta"], title="B")
+    res = auth_client.post(
+        f"/api/workspaces/{workspace.id}/conversations/", {"document_ids": [a.id]}, format="json"
+    )
+    assert res.status_code == 201 and res.data["document_ids"] == [a.id]
+    url = f"/api/conversations/{res.data['id']}/"
+    res = auth_client.patch(url, {"document_ids": [a.id, b.id]}, format="json")
+    assert sorted(res.data["document_ids"]) == [a.id, b.id]
+    res = auth_client.patch(url, {"document_ids": []}, format="json")  # back to "all"
+    assert res.data["document_ids"] == []
+
+
+def test_scope_rejects_other_workspace_documents(
+    auth_client, workspace, conversation, other_user, other_workspace
+):
+    foreign = add_document(other_workspace, other_user, ["bob's secret"])
+    create = auth_client.post(
+        f"/api/workspaces/{workspace.id}/conversations/",
+        {"document_ids": [foreign.id]},
+        format="json",
+    )
+    patch = auth_client.patch(
+        f"/api/conversations/{conversation.id}/", {"document_ids": [foreign.id]}, format="json"
+    )
+    missing = auth_client.patch(
+        f"/api/conversations/{conversation.id}/", {"document_ids": [999999]}, format="json"
+    )
+    for res in (create, patch, missing):
+        assert res.status_code == 400
+        assert "not in this workspace" in str(res.data["document_ids"])
+    assert not conversation.documents.exists()
+
+
+def test_ask_only_searches_selected_documents(auth_client, workspace, user, conversation):
+    add_document(workspace, user, ["Mitochondria produce ATP."], title="Biology")
+    chosen = add_document(
+        workspace, user, ["The French revolution began in 1789."], title="History"
+    )
+    conversation.documents.set([chosen])
+    sources = parse_sse(ask(auth_client, conversation.id, "What do mitochondria produce?"))[0][1]
+    assert {s["document_id"] for s in sources["sources"]} == {chosen.id}
+
+
+def test_scoped_ask_with_no_ready_chunks_says_selected(auth_client, workspace, user, conversation):
+    pending = add_document(workspace, user, ["text"], status="processing", title="Pending")
+    conversation.documents.set([pending])
+    events = parse_sse(ask(auth_client, conversation.id, "anything?"))
+    assert events[0][1]["sources"] == []
+    assert events[-1][1]["message"]["content"] == rag.NOT_FOUND_SELECTED_ANSWER
+
+
 def test_ask_validates_question(auth_client, conversation):
     assert ask(auth_client, conversation.id, "   ").status_code == 400
     assert ask(auth_client, conversation.id, "x" * 2001).status_code == 400

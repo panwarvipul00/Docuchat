@@ -5,13 +5,13 @@ import { useEffect, useState } from "react";
 
 import { ChatComposer } from "@/components/ChatComposer";
 import { ChatTopBar, useConversations } from "@/components/ChatSidebar";
+import { DocumentScopePicker } from "@/components/DocumentScopePicker";
 import { DocumentIcon } from "@/components/icons";
 import { useWorkspaces } from "@/components/WorkspaceProvider";
 import { EmptyState, ErrorBanner, Logo, Skeleton } from "@/components/ui";
-import { api, type DocumentItem } from "@/lib/api";
 
 const SUGGESTIONS = [
-  "Summarize the key points of my documents",
+  "Summarize the key points",
   "What are the main conclusions or recommendations?",
   "List any important dates, deadlines, or numbers",
 ];
@@ -19,34 +19,21 @@ const SUGGESTIONS = [
 /** "New chat": a welcome screen whose first question creates the conversation. */
 export default function NewChatPage() {
   const { current, loading: wsLoading } = useWorkspaces();
-  const { startChat } = useConversations();
-  const [documents, setDocuments] = useState<DocumentItem[] | null>(null);
+  const { startChat, documents, documentsError, reloadDocuments } = useConversations();
   const [question, setQuestion] = useState("");
+  const [scope, setScope] = useState<number[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [docsError, setDocsError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
 
-  const workspaceId = current?.id;
-
-  // Only to decide which state to show; asking still works if this fails.
+  // /chat?doc=12 (the "Ask" button on the Documents page) starts a chat
+  // already limited to that document. Read once, then drop it from the URL.
   useEffect(() => {
-    if (!workspaceId) return;
-    let cancelled = false;
-    setDocuments(null);
-    setDocsError(null);
-    api.listDocuments(workspaceId).then(
-      (docs) => !cancelled && setDocuments(docs),
-      (err: unknown) => {
-        if (cancelled) return;
-        setDocsError(err instanceof Error ? err.message : "Could not load documents.");
-        setDocuments([]);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [workspaceId, attempt]);
+    const doc = Number(new URLSearchParams(window.location.search).get("doc"));
+    if (doc) {
+      setScope([doc]);
+      window.history.replaceState(null, "", "/chat");
+    }
+  }, []);
 
   async function send(text: string) {
     const q = text.trim();
@@ -54,7 +41,7 @@ export default function NewChatPage() {
     setSending(true);
     setError(null);
     try {
-      await startChat(q); // navigates to the new conversation
+      await startChat(q, scope); // navigates to the new conversation
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start a conversation.");
       setQuestion(q);
@@ -62,8 +49,9 @@ export default function NewChatPage() {
     }
   }
 
-  const ready = documents?.filter((d) => d.status === "ready").length ?? 0;
+  const ready = documents?.filter((d) => d.status === "ready") ?? [];
   const processing = documents?.some((d) => d.status === "uploaded" || d.status === "processing");
+  const scoped = ready.filter((d) => scope.includes(d.id));
 
   let body: React.ReactNode;
   if (wsLoading || documents === null) {
@@ -76,13 +64,13 @@ export default function NewChatPage() {
     );
   } else if (!current) {
     body = <ErrorBanner message="No workspace found." />;
-  } else if (docsError) {
+  } else if (documentsError) {
     body = (
       <div className="mx-auto w-full max-w-xl pt-10">
-        <ErrorBanner message={docsError} onRetry={() => setAttempt((a) => a + 1)} />
+        <ErrorBanner message={documentsError} onRetry={() => void reloadDocuments()} />
       </div>
     );
-  } else if (ready === 0) {
+  } else if (ready.length === 0) {
     body = (
       <div className="mx-auto w-full max-w-xl pt-10">
         <EmptyState
@@ -112,8 +100,11 @@ export default function NewChatPage() {
           What would you like to know?
         </h2>
         <p className="mt-2 text-sm text-muted">
-          Answers come only from the {ready} ready document{ready === 1 ? "" : "s"} in{" "}
-          {current.name}, with citations.
+          {scoped.length === 1
+            ? `Answers will come only from “${scoped[0].title}”, with citations.`
+            : scoped.length > 1
+              ? `Answers will come only from the ${scoped.length} selected documents, with citations.`
+              : `Answers come from all ${ready.length} ready document${ready.length === 1 ? "" : "s"} in ${current.name}, with citations. Use “Search in” below to pick specific ones.`}
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-2">
           {SUGGESTIONS.map((s) => (
@@ -132,7 +123,7 @@ export default function NewChatPage() {
   }
 
   // If the document check failed we still let the user ask: the backend decides.
-  const showComposer = Boolean(current && documents !== null && (ready > 0 || docsError));
+  const showComposer = Boolean(current && documents !== null && (ready.length > 0 || documentsError));
 
   return (
     <>
@@ -142,13 +133,21 @@ export default function NewChatPage() {
         <div className="mx-auto w-full max-w-3xl space-y-2 px-4 pb-4 pt-2">
           <ErrorBanner message={error} onDismiss={() => setError(null)} />
           {showComposer && (
-            <ChatComposer
-              value={question}
-              onChange={setQuestion}
-              onSubmit={() => void send(question)}
-              disabled={sending}
-              autoFocus
-            />
+            <>
+              <DocumentScopePicker
+                documents={documents ?? []}
+                selected={scope}
+                onChange={setScope}
+                disabled={sending}
+              />
+              <ChatComposer
+                value={question}
+                onChange={setQuestion}
+                onSubmit={() => void send(question)}
+                disabled={sending}
+                autoFocus
+              />
+            </>
           )}
         </div>
       )}

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import { ChatComposer } from "@/components/ChatComposer";
 import { ChatTopBar, useConversations } from "@/components/ChatSidebar";
+import { DocumentScopePicker } from "@/components/DocumentScopePicker";
 import { ChatIcon } from "@/components/icons";
 import { Markdown } from "@/components/Markdown";
 import { SourcePanel } from "@/components/SourcePanel";
@@ -37,7 +38,13 @@ const citedIn = (content: string, sources: Citation[]) =>
 export default function ConversationPage() {
   const params = useParams<{ conversationId: string }>();
   const conversationId = Number(params.conversationId);
-  const { conversations, reload: reloadSidebar, takeFirstQuestion } = useConversations();
+  const {
+    conversations,
+    documents,
+    setScope,
+    reload: reloadSidebar,
+    takeFirstQuestion,
+  } = useConversations();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -56,7 +63,17 @@ export default function ConversationPage() {
   const stickToBottom = useRef(true);
 
   const streaming = pendingQuestion !== null;
-  const title = conversations.find((c) => c.id === conversationId)?.title || "New conversation";
+  const conversation = conversations.find((c) => c.id === conversationId);
+  const title = conversation?.title || "New conversation";
+
+  async function changeScope(ids: number[]) {
+    setError(null);
+    try {
+      await setScope(conversationId, ids);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change the documents.");
+    }
+  }
 
   const ask = useCallback(
     async (q: string) => {
@@ -260,6 +277,14 @@ export default function ConversationPage() {
             onRetry={failedQuestion && !streaming ? () => void ask(failedQuestion) : undefined}
             onDismiss={() => setError(null)}
           />
+          {conversation && documents && (
+            <DocumentScopePicker
+              documents={documents}
+              selected={conversation.document_ids}
+              onChange={(ids) => void changeScope(ids)}
+              disabled={streaming}
+            />
+          )}
           <ChatComposer
             value={question}
             onChange={setQuestion}

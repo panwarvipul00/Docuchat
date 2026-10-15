@@ -4,6 +4,7 @@ Tenant isolation is enforced here, in the query itself: the caller passes a
 workspace and we only ever look at chunks of `ready` documents in it.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from django.db import connection, transaction
@@ -26,12 +27,22 @@ class RetrievedChunk:
 
 
 def vector_search(
-    workspace: Workspace, query_embedding: list[float], k: int = DEFAULT_TOP_K
+    workspace: Workspace,
+    query_embedding: list[float],
+    k: int = DEFAULT_TOP_K,
+    document_ids: Collection[int] | None = None,
 ) -> list[RetrievedChunk]:
-    """Top-k chunks in `workspace` closest to `query_embedding` (cosine distance)."""
+    """Top-k chunks in `workspace` closest to `query_embedding` (cosine distance).
+
+    `document_ids` narrows the search to those documents. It is applied on top
+    of the workspace filter, never instead of it, so passing another
+    workspace's ids can only shrink the results, never leak them.
+    """
+    qs = Chunk.objects.filter(document__workspace=workspace, document__status=Document.Status.READY)
+    if document_ids:
+        qs = qs.filter(document_id__in=document_ids)
     qs = (
-        Chunk.objects.filter(document__workspace=workspace, document__status=Document.Status.READY)
-        .annotate(distance=CosineDistance("embedding", query_embedding))
+        qs.annotate(distance=CosineDistance("embedding", query_embedding))
         .order_by("distance")
         .select_related("document")[:k]
     )

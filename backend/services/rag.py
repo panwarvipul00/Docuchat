@@ -20,6 +20,7 @@ from services.retrieval import RetrievedChunk, vector_search
 logger = logging.getLogger(__name__)
 
 NOT_FOUND_ANSWER = "I couldn't find this in your documents."
+NOT_FOUND_SELECTED_ANSWER = "I couldn't find this in the selected documents."
 
 # Prompt design notes:
 # - Grounding: the model must answer only from the numbered sources, with an
@@ -178,13 +179,17 @@ def answer_question(conversation: Conversation, question: str) -> Iterator[RagEv
 
     try:
         [query_vec] = embed_texts([question])
-        sources = vector_search(conversation.workspace, query_vec, k=settings.RAG_TOP_K)
+        scope = [d.pk for d in conversation.documents.all()]
+        sources = vector_search(
+            conversation.workspace, query_vec, k=settings.RAG_TOP_K, document_ids=scope
+        )
         yield SourcesEvent([source_dict(i, s) for i, s in enumerate(sources, start=1)])
 
         if not sources:
-            # Nothing indexed in this workspace: answer directly, skip the LLM call.
-            parts.append(NOT_FOUND_ANSWER)
-            yield TokenEvent(NOT_FOUND_ANSWER)
+            # Nothing indexed in scope: answer directly, skip the LLM call.
+            answer = NOT_FOUND_SELECTED_ANSWER if scope else NOT_FOUND_ANSWER
+            parts.append(answer)
+            yield TokenEvent(answer)
         else:
             prompt = build_messages(question, sources, _history(conversation, user_msg.id))
             for event in get_llm_provider().stream_chat(prompt):

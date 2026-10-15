@@ -15,7 +15,7 @@ import {
 import { CloseIcon, MenuIcon, PencilIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { ErrorBanner, Skeleton } from "@/components/ui";
 import { useWorkspaces } from "@/components/WorkspaceProvider";
-import { api, type Conversation } from "@/lib/api";
+import { api, type Conversation, type DocumentItem } from "@/lib/api";
 
 // ---------- Shared conversation state ----------
 
@@ -24,8 +24,14 @@ interface ConversationsContextValue {
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
+  /** Workspace documents (any status), for the "search in" picker; null while loading. */
+  documents: DocumentItem[] | null;
+  documentsError: string | null;
+  reloadDocuments: () => Promise<void>;
   /** Create a conversation and open it; `question` is asked as soon as it loads. */
-  startChat: (question: string) => Promise<void>;
+  startChat: (question: string, documentIds: number[]) => Promise<void>;
+  /** Change which documents a conversation searches ([] = all). */
+  setScope: (id: number, documentIds: number[]) => Promise<void>;
   /** The question passed to startChat for this conversation (returned once). */
   takeFirstQuestion: (conversationId: number) => string | null;
   rename: (id: number, title: string) => Promise<void>;
@@ -55,6 +61,8 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [documents, setDocuments] = useState<DocumentItem[] | null>(null);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
   // A "new chat" isn't created until the first question is sent, so empty
   // conversations don't pile up in the sidebar. The question is handed to the
   // conversation page through this ref after navigating.
@@ -72,6 +80,22 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     }
   }, [workspaceId]);
 
+  const reloadDocuments = useCallback(async () => {
+    if (!workspaceId) return;
+    setDocumentsError(null);
+    try {
+      setDocuments(await api.listDocuments(workspaceId));
+    } catch (err) {
+      setDocumentsError(err instanceof Error ? err.message : "Could not load documents.");
+      setDocuments([]);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    setDocuments(null);
+    void reloadDocuments();
+  }, [reloadDocuments]);
+
   // Switching workspace: load its conversations. If a chat from the old
   // workspace is open, leave it, since it no longer belongs on screen.
   const previousWorkspace = useRef(workspaceId);
@@ -85,9 +109,9 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   }, [reload, workspaceId, router]);
 
   const startChat = useCallback(
-    async (question: string) => {
+    async (question: string, documentIds: number[]) => {
       if (!workspaceId) throw new Error("No workspace selected.");
-      const conv = await api.createConversation(workspaceId);
+      const conv = await api.createConversation(workspaceId, documentIds);
       firstQuestion.current = { id: conv.id, question };
       setConversations((prev) => [conv, ...prev]);
       router.push(`/chat/${conv.id}`);
@@ -103,7 +127,12 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const rename = useCallback(async (id: number, title: string) => {
-    const updated = await api.renameConversation(id, title);
+    const updated = await api.updateConversation(id, { title });
+    setConversations((prev) => prev.map((c) => (c.id === id ? updated : c)));
+  }, []);
+
+  const setScope = useCallback(async (id: number, documentIds: number[]) => {
+    const updated = await api.updateConversation(id, { document_ids: documentIds });
     setConversations((prev) => prev.map((c) => (c.id === id ? updated : c)));
   }, []);
 
@@ -118,14 +147,32 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
       loading,
       error,
       reload,
+      documents,
+      documentsError,
+      reloadDocuments,
       startChat,
+      setScope,
       takeFirstQuestion,
       rename,
       remove,
       drawerOpen,
       setDrawerOpen,
     }),
-    [conversations, loading, error, reload, startChat, takeFirstQuestion, rename, remove, drawerOpen],
+    [
+      conversations,
+      loading,
+      error,
+      reload,
+      documents,
+      documentsError,
+      reloadDocuments,
+      startChat,
+      setScope,
+      takeFirstQuestion,
+      rename,
+      remove,
+      drawerOpen,
+    ],
   );
 
   return <ConversationsContext.Provider value={value}>{children}</ConversationsContext.Provider>;

@@ -105,9 +105,12 @@ GET    /api/workspaces/{id}/documents/
 POST   /api/workspaces/{id}/documents/  (multipart upload)
 GET    /api/documents/{id}/             (includes status)
 DELETE /api/documents/{id}/
+GET    /api/chunks/{id}/                (cited passage text, for clickable citations)
 
 GET    /api/workspaces/{id}/conversations/
-POST   /api/workspaces/{id}/conversations/
+POST   /api/workspaces/{id}/conversations/   (optional document_ids = chat's search scope)
+PATCH  /api/conversations/{id}/         (rename / change document_ids)
+DELETE /api/conversations/{id}/
 GET    /api/conversations/{id}/messages/
 POST   /api/conversations/{id}/ask/     (streams answer via SSE)
 ```

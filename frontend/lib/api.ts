@@ -75,6 +75,8 @@ export interface Conversation {
   id: number;
   workspace: number;
   title: string;
+  /** Documents this chat searches; empty = every ready document in the workspace. */
+  document_ids: number[];
   created_at: string;
   updated_at: string;
 }
@@ -418,14 +420,17 @@ export const api = {
   listConversations(workspaceId: number): Promise<Conversation[]> {
     return request<Conversation[]>(`/workspaces/${workspaceId}/conversations/`);
   },
-  createConversation(workspaceId: number, title = ""): Promise<Conversation> {
+  createConversation(workspaceId: number, documentIds: number[] = []): Promise<Conversation> {
     return request<Conversation>(`/workspaces/${workspaceId}/conversations/`, {
       method: "POST",
-      json: { title },
+      json: { document_ids: documentIds },
     });
   },
-  renameConversation(id: number, title: string): Promise<Conversation> {
-    return request<Conversation>(`/conversations/${id}/`, { method: "PATCH", json: { title } });
+  updateConversation(
+    id: number,
+    patch: { title?: string; document_ids?: number[] },
+  ): Promise<Conversation> {
+    return request<Conversation>(`/conversations/${id}/`, { method: "PATCH", json: patch });
   },
   deleteConversation(id: number): Promise<null> {
     return request<null>(`/conversations/${id}/`, { method: "DELETE" });

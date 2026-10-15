@@ -31,11 +31,22 @@ class WorkspaceConversationListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self) -> QuerySet[Conversation]:
         workspace = get_workspace_for_user(self.request.user, self.kwargs["workspace_id"])
-        return user_conversations(self.request).filter(workspace=workspace)
+        return (
+            user_conversations(self.request)
+            .filter(workspace=workspace)
+            .prefetch_related("documents")
+        )
+
+    def get_serializer_context(self) -> dict:
+        context = super().get_serializer_context()
+        if self.request.method == "POST":
+            context["workspace"] = get_workspace_for_user(
+                self.request.user, self.kwargs["workspace_id"]
+            )
+        return context
 
     def perform_create(self, serializer: ConversationSerializer) -> None:
-        workspace = get_workspace_for_user(self.request.user, self.kwargs["workspace_id"])
-        serializer.save(workspace=workspace, user=self.request.user)
+        serializer.save(workspace=serializer.context["workspace"], user=self.request.user)
 
 
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -45,7 +56,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_queryset(self) -> QuerySet[Conversation]:
-        return user_conversations(self.request)
+        return user_conversations(self.request).select_related("workspace")
 
 
 class ConversationMessageListView(generics.ListAPIView):

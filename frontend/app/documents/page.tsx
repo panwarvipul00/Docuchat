@@ -318,6 +318,16 @@ function DocumentRow({ doc, onDelete }: { doc: DocumentItem; onDelete?: () => Pr
           <p className="truncate text-xs text-muted">{meta.join(" · ")}</p>
         </div>
         <StatusBadge status={doc.status} />
+        {doc.status === "ready" && !confirming && (
+          <Link
+            href={`/chat?doc=${doc.id}`}
+            title={`Start a chat about ${doc.title} only`}
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft"
+          >
+            <ChatIcon size={14} />
+            <span className="hidden sm:inline">Ask</span>
+          </Link>
+        )}
         {onDelete &&
           (confirming ? (
             <span className="flex shrink-0 items-center gap-1">
