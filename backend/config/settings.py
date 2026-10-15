@@ -129,10 +129,11 @@ REST_FRAMEWORK = {
     # Rate limiting. anon/user are blanket limits on every endpoint (by IP /
     # by user id); scoped limits apply only to views that set `throttle_scope`.
     # Expensive endpoints get tighter limits; see apps/*/throttles.py.
+    # Staff accounts (the site owner) skip the per-user limits.
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-        "rest_framework.throttling.ScopedRateThrottle",
+        "apps.accounts.throttles.StaffExemptUserRateThrottle",
+        "apps.accounts.throttles.StaffExemptScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": "60/min",

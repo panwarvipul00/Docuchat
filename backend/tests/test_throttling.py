@@ -144,3 +144,35 @@ def test_token_budget_zero_disables(auth_client, conversation, settings):
     settings.DAILY_TOKEN_BUDGET = 0
     spend(conversation, 10**9)
     assert ask(auth_client, conversation.id, "anything?").status_code == 200
+
+
+# ---------- staff (site owner) exemption ----------
+
+
+@pytest.fixture
+def staff_client(user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+def test_staff_skip_ask_limit_and_token_budget(staff_client, conversation, settings):
+    settings.DAILY_TOKEN_BUDGET = 1000
+    spend(conversation, 5000)
+    for _ in range(4):  # ask limit is 2/min in these tests
+        res = ask(staff_client, conversation.id, "anything?")
+        assert res.status_code == 200
+        b"".join(res.streaming_content)
+
+
+def test_staff_skip_upload_limit(staff_client, workspace):
+    for _ in range(3):  # upload limit is 1/hour in these tests
+        assert upload(staff_client, workspace.id, pdf()).status_code == 201
+
+
+def test_login_limit_still_applies_to_everyone(api_client, user):
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
+    assert [login(api_client).status_code for _ in range(3)] == [401, 401, 429]
