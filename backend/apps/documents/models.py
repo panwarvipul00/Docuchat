@@ -27,6 +27,8 @@ class Document(models.Model):
         PDF = "pdf", "PDF"
         DOCX = "docx", "DOCX"
         TXT = "txt", "TXT"
+        XLSX = "xlsx", "Excel"
+        CSV = "csv", "CSV"
 
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="documents")
     uploaded_by = models.ForeignKey(

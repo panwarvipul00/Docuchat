@@ -103,11 +103,35 @@ def test_embeddings_are_batched(settings):
         embeddings.FakeEmbeddingProvider,
         "embed",
         autospec=True,
-        side_effect=lambda self, batch: [[0.0] * 1536 for _ in batch],
+        side_effect=lambda self, batch, **kw: [[0.0] * 1536 for _ in batch],
     ) as embed:
         vectors = embed_texts([f"text {i}" for i in range(150)])
     assert len(vectors) == 150
     assert [len(call.args[1]) for call in embed.call_args_list] == [64, 64, 22]
+
+
+def test_embedding_batches_are_capped_by_tokens(settings):
+    settings.EMBEDDING_BATCH_SIZE = 64
+    settings.EMBEDDING_BATCH_TOKENS = 1_000
+    text = "word " * 299  # 300 tokens incl. the trailing space run
+    n = embeddings.count_tokens(text)
+    with mock.patch.object(
+        embeddings.FakeEmbeddingProvider,
+        "embed",
+        autospec=True,
+        side_effect=lambda self, batch, **kw: [[0.0] * 1536 for _ in batch],
+    ) as embed:
+        vectors = embed_texts([text] * 10)
+    assert len(vectors) == 10
+    sizes = [len(call.args[1]) for call in embed.call_args_list]
+    assert sum(sizes) == 10
+    assert all(size * n <= 1_000 for size in sizes)
+
+
+def test_oversized_text_is_sent_alone():
+    big, small = "word " * 50, "hi"
+    batches = list(embeddings.batched([small, big, small], size=10, max_tokens=20))
+    assert batches == [[small], [big], [small]]
 
 
 def test_openai_provider_requires_key(settings):

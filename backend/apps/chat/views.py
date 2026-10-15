@@ -1,14 +1,17 @@
 import json
+import re
 from collections.abc import Iterator
 
 from django.db.models import QuerySet
-from django.http import StreamingHttpResponse
+from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils.http import content_disposition_header
 from rest_framework import generics
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from apps.workspaces.services import get_workspace_for_user, workspaces_for_user
+from services import export
 from services.rag import DoneEvent, ErrorEvent, RagEvent, SourcesEvent, answer_question
 
 from .models import Conversation, Message
@@ -65,6 +68,45 @@ class ConversationMessageListView(generics.ListAPIView):
     def get_queryset(self) -> QuerySet[Message]:
         conversation = get_object_or_404(user_conversations(self.request), pk=self.kwargs["pk"])
         return conversation.messages.all()
+
+
+EXPORT_FORMATS = {
+    "docx": (export.to_docx, export.DOCX_CONTENT_TYPE),
+    "md": (export.to_markdown, export.MARKDOWN_CONTENT_TYPE),
+}
+
+_TITLE_LINE_RE = re.compile(r"^\s*#\s+(.+?)\s*$")
+
+
+class MessageExportView(APIView):
+    """GET /messages/{id}/export/{docx|md}/ -> one assistant answer as a file.
+
+    The file title is the answer's own "# Title" line when it has one (the
+    model writes one when asked to create a document), else the chat title.
+    """
+
+    def get(self, request: Request, pk: int, fmt: str) -> HttpResponse:
+        if fmt not in EXPORT_FORMATS:
+            raise Http404
+        message = get_object_or_404(
+            Message.objects.filter(
+                conversation__in=user_conversations(request), role=Message.Role.ASSISTANT
+            ).select_related("conversation"),
+            pk=pk,
+        )
+        title = message.conversation.title or "DocuChat answer"
+        content = message.content
+        first, _, rest = content.lstrip().partition("\n")
+        if m := _TITLE_LINE_RE.match(first):
+            title, content = m[1], rest
+
+        render, content_type = EXPORT_FORMATS[fmt]
+        body = render(title, content, message.citations, message.created_at)
+        response = HttpResponse(body, content_type=content_type)
+        response["Content-Disposition"] = content_disposition_header(
+            as_attachment=True, filename=export.export_filename(title, fmt)
+        )
+        return response
 
 
 def _sse(event: str, data: object) -> str:

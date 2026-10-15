@@ -8,7 +8,7 @@ import { ChatTopBar, useConversations } from "@/components/ChatSidebar";
 import { DocumentScopePicker } from "@/components/DocumentScopePicker";
 import { DocumentIcon } from "@/components/icons";
 import { useWorkspaces } from "@/components/WorkspaceProvider";
-import { EmptyState, ErrorBanner, Logo, Skeleton } from "@/components/ui";
+import { EmptyState, ErrorBanner, Logo, Skeleton, SUPPORTED_FILES } from "@/components/ui";
 
 const SUGGESTIONS = [
   "Summarize the key points",
@@ -79,7 +79,7 @@ export default function NewChatPage() {
           description={
             processing
               ? "Answers come only from ready documents. This usually takes under a minute."
-              : `Upload a PDF, DOCX, or TXT file to ${current.name}, then come back and ask about it.`
+              : `Upload a ${SUPPORTED_FILES} file to ${current.name}, then come back and ask about it.`
           }
           action={
             <Link

@@ -6,12 +6,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { ChatIcon, CloseIcon, DocumentIcon, TrashIcon, UploadIcon } from "@/components/icons";
 import { useWorkspaces } from "@/components/WorkspaceProvider";
-import { EmptyState, ErrorBanner, formatBytes, Skeleton, StatusBadge } from "@/components/ui";
+import {
+  EmptyState,
+  ErrorBanner,
+  formatBytes,
+  Skeleton,
+  StatusBadge,
+  SUPPORTED_FILES,
+} from "@/components/ui";
 import { api, type DocumentItem } from "@/lib/api";
 
 // Mirrors the backend limits so users get instant feedback; the server still
 // re-validates (extension + file signature + size) because the client can't be trusted.
-const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt"];
+const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt", ".xlsx", ".csv"];
+// Common formats we can't read, with what to do instead (same hints as the backend).
+const UNSUPPORTED_HINTS: Record<string, string> = {
+  ".xls": "Old .xls files aren't supported. In Excel use File > Save As > .xlsx.",
+  ".doc": "Old .doc files aren't supported. In Word use File > Save As > .docx.",
+};
 const MAX_BYTES = 20 * 1024 * 1024;
 // While any document is still being ingested, re-fetch the list on this interval.
 // Plain polling is simplest here; SSE/websockets would be overkill for a status flag.
@@ -20,7 +32,9 @@ const IN_PROGRESS: ReadonlySet<DocumentItem["status"]> = new Set(["uploaded", "p
 
 function validateFile(file: File): string | null {
   const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
-  if (!ALLOWED_EXTENSIONS.includes(ext)) return "Only PDF, DOCX, and TXT files are supported.";
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return UNSUPPORTED_HINTS[ext] ?? `Only ${SUPPORTED_FILES} files are supported.`;
+  }
   if (file.size > MAX_BYTES) return "File is too large (max 20 MB).";
   if (file.size === 0) return "The file is empty.";
   return null;
@@ -161,7 +175,7 @@ export default function DocumentsPage() {
           <EmptyState
             icon={<DocumentIcon size={22} />}
             title="No documents yet"
-            description="Upload a PDF, DOCX, or TXT file above. Once it's processed you can ask questions about it."
+            description={`Upload a ${SUPPORTED_FILES} file above. Once it's processed you can ask questions about it.`}
           />
         )
       ) : (
@@ -243,7 +257,7 @@ function Dropzone({ onFiles, busy }: { onFiles: (files: File[]) => void; busy: b
         )}
       </p>
       <p className="mt-1 text-xs text-muted">
-        PDF, DOCX, TXT · max 20 MB each{busy ? " · uploading…" : ""}
+        PDF, DOCX, TXT, XLSX, CSV · max 20 MB each{busy ? " · uploading…" : ""}
       </p>
     </div>
   );
@@ -301,7 +315,7 @@ function DocumentRow({ doc, onDelete }: { doc: DocumentItem; onDelete?: () => Pr
   const meta = [
     doc.file_type.toUpperCase(),
     formatBytes(doc.file_size),
-    doc.page_count ? `${doc.page_count} page${doc.page_count === 1 ? "" : "s"}` : null,
+    pageCountLabel(doc),
     new Date(doc.created_at).toLocaleDateString(),
   ].filter(Boolean);
 
@@ -369,6 +383,13 @@ function DocumentRow({ doc, onDelete }: { doc: DocumentItem; onDelete?: () => Pr
       {error && <p className="mt-1 text-xs text-danger sm:pl-12">{error}</p>}
     </li>
   );
+}
+
+/** "12 pages" / "3 sheets"; nothing for CSV (always one table) or before processing. */
+function pageCountLabel(doc: DocumentItem): string | null {
+  if (!doc.page_count || doc.file_type === "csv") return null;
+  const unit = doc.file_type === "xlsx" ? "sheet" : "page";
+  return `${doc.page_count} ${unit}${doc.page_count === 1 ? "" : "s"}`;
 }
 
 function ListSkeleton() {

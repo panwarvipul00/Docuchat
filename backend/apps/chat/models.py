@@ -37,7 +37,7 @@ class Message(models.Model):
     )
     role = models.CharField(max_length=10, choices=Role.choices)
     content = models.TextField()
-    # [{index, document_id, chunk_id, title, page}] for the sources the answer cites.
+    # [{index, document_id, chunk_id, title, file_type, page}] for the sources the answer cites.
     citations = models.JSONField(default=list, blank=True)
     tokens_used = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

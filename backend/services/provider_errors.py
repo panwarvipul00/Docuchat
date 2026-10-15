@@ -61,13 +61,24 @@ def friendly_message(exc: Exception, provider: str = "OpenAI") -> str:
     return f"Unexpected error talking to {provider}."
 
 
-def call_with_retries[T](fn: Callable[[], T], attempts: int = 4, base_delay: float = 1.0) -> T:
-    """Call `fn`, retrying transient provider errors with exponential backoff (1s, 2s, 4s)."""
+# For background work that can afford to wait out a per-minute rate limit:
+# 2, 4, 8, 16, 30, 30s = ~90s, longer than a one-minute quota window.
+PATIENT_RETRIES = {"attempts": 7, "base_delay": 2.0, "max_delay": 30.0}
+
+
+def call_with_retries[T](
+    fn: Callable[[], T], attempts: int = 4, base_delay: float = 1.0, max_delay: float = 30.0
+) -> T:
+    """Call `fn`, retrying transient provider errors with exponential backoff.
+
+    The default (1s, 2s, 4s) suits interactive requests, where a user is
+    waiting; pass PATIENT_RETRIES for background jobs.
+    """
     for attempt in range(attempts):
         try:
             return fn()
         except Exception as exc:
             if attempt == attempts - 1 or not is_retryable(exc):
                 raise
-            time.sleep(base_delay * 2**attempt)
+            time.sleep(min(base_delay * 2**attempt, max_delay))
     raise AssertionError("unreachable")

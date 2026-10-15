@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { AnswerDownload } from "@/components/AnswerDownload";
 import { ChatComposer } from "@/components/ChatComposer";
 import { ChatTopBar, useConversations } from "@/components/ChatSidebar";
 import { DocumentScopePicker } from "@/components/DocumentScopePicker";
@@ -245,6 +246,8 @@ export default function ConversationPage() {
               return (
                 <MessageBubble
                   key={key}
+                  // Negative ids are local copies of a stopped answer: not saved yet.
+                  downloadId={m.id > 0 ? m.id : undefined}
                   role={m.role}
                   content={m.content}
                   citations={m.citations}
@@ -325,7 +328,10 @@ function MessageBubble({
   activeIndex = null,
   onCitationClick,
   streaming = false,
+  downloadId,
 }: {
+  /** Saved assistant message id; shows the Download menu when set. */
+  downloadId?: number;
   role: Message["role"];
   content: string;
   citations: Citation[];
@@ -371,12 +377,18 @@ function MessageBubble({
                     index={c.index}
                     title={c.title}
                     page={c.page}
+                    fileType={c.file_type}
                     active={activeIndex === c.index}
                     onClick={onCitationClick && (() => onCitationClick(c))}
                   />
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+        {downloadId !== undefined && (
+          <div className="-mb-1.5 mt-3 flex border-t border-border pt-2">
+            <AnswerDownload messageId={downloadId} />
           </div>
         )}
       </div>

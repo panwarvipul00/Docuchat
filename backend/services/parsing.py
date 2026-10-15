@@ -1,23 +1,35 @@
 """File -> list of pages of text.
 
 Each parser returns `[(page_number, text), ...]` with 1-based page numbers, which
-is what lets answers cite "document X, page N" later.
+is what lets answers cite "document X, page N" later. Spreadsheets use one
+"page" per sheet.
 """
 
+import csv
+import datetime as dt
 import re
 from collections import Counter
-from dataclasses import dataclass
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+import openpyxl
 import pymupdf
+from django.conf import settings
 from docx import Document as DocxDocument
 from docx.oxml.ns import qn
+from openpyxl.utils import get_column_letter
 
 
 @dataclass(frozen=True)
 class Page:
     number: int
     text: str
+    # Spreadsheet sheets: `text` is one record (row) per paragraph, and the
+    # chunker keeps records whole and prefixes every chunk with `heading`
+    # (e.g. 'Sheet "March"') so each chunk says where it came from.
+    records: bool = False
+    heading: str = ""
 
 
 class ParsingError(Exception):
@@ -25,11 +37,19 @@ class ParsingError(Exception):
 
 
 def parse_file(path: str | Path, file_type: str) -> list[Page]:
-    parsers = {"pdf": parse_pdf, "docx": parse_docx, "txt": parse_txt}
+    parsers = {
+        "pdf": parse_pdf,
+        "docx": parse_docx,
+        "txt": parse_txt,
+        "xlsx": parse_xlsx,
+        "csv": parse_csv,
+    }
     if file_type not in parsers:
         raise ParsingError(f"Unsupported file type: {file_type}")
     pages = clean_pages(parsers[file_type](Path(path)))
     if not any(p.text for p in pages):
+        if file_type in ("xlsx", "csv"):
+            raise ParsingError("The spreadsheet has no data rows.")
         raise ParsingError(
             "No extractable text found. Scanned/image-only PDFs need OCR, which isn't supported."
         )
@@ -100,6 +120,110 @@ def parse_txt(path: Path) -> list[Page]:
     return [Page(i + 1, t) for i, t in enumerate(chunks)]
 
 
+# ---------- Spreadsheets ----------
+#
+# RAG retrieves a handful of chunks, so a chunk must make sense on its own. A
+# bare row like "Rahul | Sales | 50000" doesn't; "Name: Rahul | Dept: Sales |
+# Salary: 50000" does, and embeds close to questions like "Rahul's salary".
+# So each row is written as header: value pairs, one row per paragraph.
+#
+# Limitation (worth knowing in interviews): this suits lookup questions. Totals
+# or averages over many rows need the whole sheet, which retrieval never sends.
+
+
+def _format_cell(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, dt.datetime):
+        if value.time() == dt.time(0, 0):
+            return value.date().isoformat()  # Excel stores plain dates as midnight
+        return value.isoformat(sep=" ", timespec="minutes")
+    if isinstance(value, dt.date | dt.time):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))  # 50000.0 -> "50000"
+    # Flatten line breaks inside a cell so one row stays one record.
+    return " ".join(str(value).split())
+
+
+def rows_to_text(rows: Iterable[Sequence[object]], row_budget: list[int]) -> str:
+    """Rows -> "Header: value | ..." records separated by blank lines.
+
+    The first non-empty row is the header. Blank header cells fall back to the
+    column letter ("Column C"). Empty rows are skipped. `row_budget` is a
+    one-item list shared across sheets, so the row cap covers the whole file.
+    """
+    header: list[str] | None = None
+    records: list[str] = []
+    for raw in rows:
+        cells = [_format_cell(v) for v in raw]
+        if not any(cells):
+            continue
+        if header is None:
+            header = [c or f"Column {get_column_letter(i + 1)}" for i, c in enumerate(cells)]
+            continue
+        row_budget[0] -= 1
+        if row_budget[0] < 0:
+            raise ParsingError(
+                f"The spreadsheet has more than {settings.MAX_SPREADSHEET_ROWS:,} rows. "
+                "Split it into smaller files."
+            )
+        pairs = [
+            f"{header[i] if i < len(header) else f'Column {get_column_letter(i + 1)}'}: {c}"
+            for i, c in enumerate(cells)
+            if c
+        ]
+        records.append(" | ".join(pairs))
+    return "\n\n".join(records)
+
+
+def parse_xlsx(path: Path) -> list[Page]:
+    """One page per worksheet (chart sheets have no cells and are skipped).
+
+    read_only streams rows instead of loading the whole workbook, and together
+    with the row cap keeps a small file that unzips to millions of cells from
+    exhausting memory. data_only returns the value Excel last calculated for a
+    formula rather than the formula text; files saved by tools that don't store
+    those values come out with formula cells empty.
+    """
+    budget = [settings.MAX_SPREADSHEET_ROWS]
+    try:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    except Exception as exc:
+        raise ParsingError(
+            f"Could not read XLSX (it may be password-protected or corrupt): {exc}"
+        ) from exc
+    try:
+        pages: list[Page] = []
+        for number, sheet in enumerate(wb.worksheets, start=1):
+            text = rows_to_text(sheet.iter_rows(values_only=True), budget)
+            pages.append(Page(number, text, records=True, heading=f'Sheet "{sheet.title}"'))
+        return pages
+    except ParsingError:
+        raise
+    except Exception as exc:
+        raise ParsingError(f"Could not read XLSX: {exc}") from exc
+    finally:
+        wb.close()
+
+
+def parse_csv(path: Path) -> list[Page]:
+    # utf-8-sig drops the byte-order mark Excel adds when it saves "CSV UTF-8".
+    raw = path.read_bytes().decode("utf-8-sig", errors="replace")
+    try:
+        # Excel in many locales (e.g. most of Europe) saves with ";" or tabs.
+        dialect: type[csv.Dialect] | csv.Dialect = csv.Sniffer().sniff(
+            raw[:8192], delimiters=",;\t|"
+        )
+    except csv.Error:
+        dialect = csv.excel
+    rows = csv.reader(raw.splitlines(), dialect)
+    text = rows_to_text(rows, [settings.MAX_SPREADSHEET_ROWS])
+    return [Page(1, text, records=True)]
+
+
 # ---------- Cleaning ----------
 
 _WS_RE = re.compile(r"[ \t ]+")
@@ -154,4 +278,9 @@ def strip_repeated_headers_footers(pages: list[Page], edge_lines: int = 2) -> li
 
 
 def clean_pages(pages: list[Page]) -> list[Page]:
-    return strip_repeated_headers_footers([Page(p.number, normalize_text(p.text)) for p in pages])
+    cleaned = [replace(p, text=normalize_text(p.text)) for p in pages]
+    # Header/footer stripping is for printed pages; on spreadsheets it could
+    # delete a legitimately repeated row from several sheets.
+    if any(p.records for p in cleaned):
+        return cleaned
+    return strip_repeated_headers_footers(cleaned)

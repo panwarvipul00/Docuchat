@@ -11,6 +11,10 @@ We pack whole sentences greedily rather than cutting at a fixed token offset,
 so chunks don't start or end mid-sentence. Only a single sentence longer than
 the whole budget (e.g. a giant table row) is hard-split by tokens.
 
+Spreadsheet sheets (`Page.records`) are packed by row instead of by sentence,
+so a row is never split at a "." inside a cell, and every chunk starts with
+the sheet name so it stands on its own.
+
 Chunks never cross a page boundary. That keeps every citation exact ("page 7"
 really means page 7), at the cost of a short final chunk on each page and the
 occasional sentence cut by a page break. For a citation-first app that's the
@@ -84,7 +88,9 @@ def _sentences(text: str, max_tokens: int) -> list[_Sentence]:
     return out
 
 
-def _pack(sentences: list[_Sentence], max_tokens: int, overlap_tokens: int) -> list[str]:
+def _pack(
+    sentences: list[_Sentence], max_tokens: int, overlap_tokens: int, joiner: str = " "
+) -> list[str]:
     """Greedily pack sentences into windows of <= max_tokens, with overlap."""
     windows: list[str] = []
     window: list[_Sentence] = []
@@ -93,7 +99,7 @@ def _pack(sentences: list[_Sentence], max_tokens: int, overlap_tokens: int) -> l
     for sentence in sentences:
         # +1 approximates the joining space.
         if window and window_tokens + sentence.tokens + 1 > max_tokens:
-            windows.append(" ".join(s.text for s in window))
+            windows.append(joiner.join(s.text for s in window))
             # Carry trailing sentences (up to the overlap budget) into the next
             # window. Skip window[0] so a chunk is never repeated wholesale.
             carried: list[_Sentence] = []
@@ -112,7 +118,7 @@ def _pack(sentences: list[_Sentence], max_tokens: int, overlap_tokens: int) -> l
         window_tokens += sentence.tokens + 1
 
     if window:
-        windows.append(" ".join(s.text for s in window))
+        windows.append(joiner.join(s.text for s in window))
     return windows
 
 
@@ -126,6 +132,25 @@ def chunk_pages(
 
     chunks: list[Chunk] = []
     for page in pages:
+        if page.records:
+            chunks.extend(_record_chunks(page, max_tokens, overlap_tokens, start=len(chunks)))
+            continue
         for content in _pack(_sentences(page.text, max_tokens), max_tokens, overlap_tokens):
             chunks.append(Chunk(content, page.number, len(chunks), count_tokens(content)))
     return chunks
+
+
+def _record_chunks(page: Page, max_tokens: int, overlap_tokens: int, start: int) -> list[Chunk]:
+    heading = f"{page.heading}\n" if page.heading else ""
+    budget = max_tokens - count_tokens(heading)
+    records: list[_Sentence] = []
+    for record in (r.strip() for r in page.text.split("\n\n")):
+        if not record:
+            continue
+        n = count_tokens(record)
+        records.extend(_hard_split(record, budget) if n > budget else [_Sentence(record, n)])
+    out: list[Chunk] = []
+    for body in _pack(records, budget, overlap_tokens, joiner="\n"):
+        content = heading + body
+        out.append(Chunk(content, page.number, start + len(out), count_tokens(content)))
+    return out

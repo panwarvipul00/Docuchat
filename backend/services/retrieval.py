@@ -21,7 +21,8 @@ class RetrievedChunk:
     chunk_id: int
     document_id: int
     title: str
-    page: int
+    file_type: str
+    page: int  # page number, or sheet number for spreadsheets
     content: str
     distance: float  # cosine distance: 0 = identical direction, 2 = opposite
 
@@ -64,6 +65,7 @@ def vector_search(
             chunk_id=c.id,
             document_id=c.document_id,
             title=c.document.title,
+            file_type=c.document.file_type,
             page=c.page_number,
             content=c.content,
             distance=float(c.distance),

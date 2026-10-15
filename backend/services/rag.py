@@ -48,7 +48,13 @@ Formatting (Markdown):
 - Start with a one- or two-sentence direct answer.
 - For longer answers, group details under short `###` headings and use bullet lists; \
 use **bold** for key terms or labels, and a table when comparing items.
-- Keep it concise: no filler, no repeating the question."""
+- Keep it concise: no filler, no repeating the question.
+
+Documents: if the user asks you to create, write or draft a document, report, summary, \
+notes, FAQ, letter or similar, write the complete document instead of a short answer: \
+start with a `# Title` line, use `##` section headings, and cover everything the sources \
+support. The rules above still apply: facts come only from the sources, with citations. \
+The user can download it as a Word file, so don't say you can't create files."""
 
 
 # ---------- Events ----------
@@ -86,13 +92,21 @@ def source_dict(index: int, chunk: RetrievedChunk) -> dict:
         "document_id": chunk.document_id,
         "chunk_id": chunk.chunk_id,
         "title": chunk.title,
+        "file_type": chunk.file_type,
         "page": chunk.page,
     }
 
 
+def location(chunk: RetrievedChunk) -> str:
+    """Where a chunk is in its document, in words the model can cite back."""
+    if chunk.file_type == "csv":
+        return "table"
+    return f"{'sheet' if chunk.file_type == 'xlsx' else 'page'} {chunk.page}"
+
+
 def format_context(sources: Sequence[RetrievedChunk]) -> str:
     return "\n\n".join(
-        f"[{i}] {s.title} — page {s.page}\n{s.content}" for i, s in enumerate(sources, start=1)
+        f"[{i}] {s.title} — {location(s)}\n{s.content}" for i, s in enumerate(sources, start=1)
     )
 
 

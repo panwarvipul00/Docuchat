@@ -4,7 +4,12 @@ import httpx
 import openai
 import pytest
 
-from services.provider_errors import call_with_retries, friendly_message, is_retryable
+from services.provider_errors import (
+    PATIENT_RETRIES,
+    call_with_retries,
+    friendly_message,
+    is_retryable,
+)
 
 REQUEST = httpx.Request("POST", "https://api.openai.com/v1/embeddings")
 
@@ -73,6 +78,27 @@ def test_gives_up_after_max_attempts():
         with pytest.raises(openai.RateLimitError):
             call_with_retries(fn, attempts=3)
     assert fn.call_count == 3
+
+
+def test_patient_retries_outlast_a_one_minute_rate_limit():
+    fn = mock.Mock(side_effect=RATE_LIMITED)
+    with mock.patch("services.provider_errors.time.sleep") as sleep:
+        with pytest.raises(openai.RateLimitError):
+            call_with_retries(fn, **PATIENT_RETRIES)
+    waits = [c.args[0] for c in sleep.call_args_list]
+    assert waits == [2.0, 4.0, 8.0, 16.0, 30.0, 30.0]  # capped at 30s each
+    assert sum(waits) > 60
+
+
+def test_ingestion_embeds_patiently_but_questions_do_not(settings):
+    from services import embeddings
+
+    with mock.patch.object(
+        embeddings.FakeEmbeddingProvider, "embed", autospec=True, return_value=[[0.0] * 1536]
+    ) as embed:
+        embeddings.embed_texts(["question"])
+        embeddings.embed_texts(["chunk"], patient=True)
+    assert [c.kwargs["patient"] for c in embed.call_args_list] == [False, True]
 
 
 def test_gemini_providers_require_gemini_key(settings):

@@ -150,6 +150,12 @@ export const SearchIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const DownloadIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+  </Svg>
+);
+
 /** Brand glyph: a document page folding into a chat bubble tail. */
 export const BrandGlyph = (p: IconProps) => (
   <Svg {...p}>

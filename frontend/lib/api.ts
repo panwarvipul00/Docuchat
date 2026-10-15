@@ -37,7 +37,7 @@ export interface Workspace {
 }
 
 export type DocumentStatus = "uploaded" | "processing" | "ready" | "failed";
-export type DocumentFileType = "pdf" | "docx" | "txt";
+export type DocumentFileType = "pdf" | "docx" | "txt" | "xlsx" | "csv";
 
 export interface DocumentItem {
   id: number;
@@ -58,6 +58,9 @@ export interface Citation {
   document_id: number;
   chunk_id: number;
   title: string;
+  /** Missing on citations saved before spreadsheets were supported (all were pages). */
+  file_type?: DocumentFileType;
+  /** Page number, or sheet number for .xlsx. */
   page: number;
 }
 
@@ -235,6 +238,56 @@ async function request<T>(path: string, opts: RequestOptions = {}, retried = fal
   const body = await parseBody(res);
   if (!res.ok) throw new ApiError(res.status, (body as ApiErrorBody | null) ?? null);
   return body as T;
+}
+
+export type ExportFormat = "docx" | "md";
+
+/** A downloaded file: its contents and the name the server suggests. */
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string;
+}
+
+/** Pull the file name out of Content-Disposition (prefers the UTF-8 `filename*`). */
+function filenameFrom(header: string | null, fallback: string): string {
+  const star = header?.match(/filename\*=UTF-8''([^;]+)/i);
+  if (star) return decodeURIComponent(star[1]);
+  const plain = header?.match(/filename="([^"]+)"/i);
+  return plain?.[1] ?? fallback;
+}
+
+/** GET a binary file with the same auth + refresh-once handling as `request`. */
+async function requestFile(path: string, fallbackName: string, retried = false): Promise<DownloadedFile> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+    });
+  } catch {
+    throw new ApiError(0, { detail: "Can't reach the server. Is the backend running?" });
+  }
+  if (res.status === 401 && !retried) {
+    if (await refreshAccessToken()) return requestFile(path, fallbackName, true);
+    forceLogout();
+  }
+  if (!res.ok) throw new ApiError(res.status, (await parseBody(res)) as ApiErrorBody | null);
+  return {
+    blob: await res.blob(),
+    filename: filenameFrom(res.headers.get("Content-Disposition"), fallbackName),
+  };
+}
+
+/** Hand a downloaded file to the browser's normal "save" flow. */
+export function saveFile({ blob, filename }: DownloadedFile): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoke on the next tick: some browsers start the download asynchronously.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /**
@@ -439,4 +492,8 @@ export const api = {
     return request<Message[]>(`/conversations/${conversationId}/messages/`);
   },
   ask: askStream,
+  /** One assistant answer as a Word or Markdown file. */
+  exportAnswer(messageId: number, format: ExportFormat): Promise<DownloadedFile> {
+    return requestFile(`/messages/${messageId}/export/${format}/`, `DocuChat answer.${format}`);
+  },
 };

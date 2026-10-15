@@ -192,6 +192,7 @@ def test_ask_streams_cited_answer_and_saves_messages(auth_client, workspace, use
         "document_id": doc.id,
         "chunk_id": doc.chunks.first().id,
         "title": "Biology Notes",
+        "file_type": "txt",
         "page": 1,
     }
 
@@ -299,14 +300,21 @@ def test_client_disconnect_saves_partial_answer(workspace, user, conversation):
 
 
 def _chunk(i: int) -> RetrievedChunk:
-    return RetrievedChunk(i, 100 + i, f"Doc {i}", i * 2, f"content {i}", 0.1)
+    return RetrievedChunk(i, 100 + i, f"Doc {i}", "pdf", i * 2, f"content {i}", 0.1)
 
 
 def test_extract_citations_formats_and_bounds():
     sources = [_chunk(1), _chunk(2), _chunk(3)]
     cites = rag.extract_citations("A [2]. B [1][2]. C [1, 3]. D [9]. E [0].", sources)
     assert [c["index"] for c in cites] == [2, 1, 3]
-    assert cites[0] == {"index": 2, "document_id": 102, "chunk_id": 2, "title": "Doc 2", "page": 4}
+    assert cites[0] == {
+        "index": 2,
+        "document_id": 102,
+        "chunk_id": 2,
+        "title": "Doc 2",
+        "file_type": "pdf",
+        "page": 4,
+    }
 
 
 def test_build_messages_numbers_sources():
@@ -315,4 +323,12 @@ def test_build_messages_numbers_sources():
     assert msgs[-1].content == (
         "Sources:\n\n[1] Doc 1 — page 2\ncontent 1\n\n[2] Doc 2 — page 4\ncontent 2\n\n"
         "Question: Why?"
+    )
+
+
+def test_context_names_sheets_for_spreadsheets():
+    xlsx = RetrievedChunk(1, 101, "Sales", "xlsx", 3, 'Sheet "March"\nRegion: North', 0.1)
+    csv_ = RetrievedChunk(2, 102, "Staff", "csv", 1, "Name: Rahul", 0.1)
+    assert rag.format_context([xlsx, csv_]) == (
+        '[1] Sales — sheet 3\nSheet "March"\nRegion: North\n\n[2] Staff — table\nName: Rahul'
     )
