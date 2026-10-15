@@ -1,7 +1,7 @@
-from rest_framework.throttling import UserRateThrottle
+from apps.accounts.throttles import StaffExemptUserRateThrottle
 
 
-class UploadRateThrottle(UserRateThrottle):
+class UploadRateThrottle(StaffExemptUserRateThrottle):
     """Per-user limit on uploads (rate: DEFAULT_THROTTLE_RATES["upload"]).
 
     A UserRateThrottle subclass rather than `throttle_scope`, because the same

@@ -38,7 +38,8 @@ class DailyTokenBudgetThrottle(BaseThrottle):
 
     def allow_request(self, request: Request, view: APIView) -> bool:
         budget = settings.DAILY_TOKEN_BUDGET
-        if not budget:
+        # Staff (the site owner) are exempt; tokens are still recorded per message.
+        if not budget or request.user.is_staff:
             return True
         now = timezone.now()
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
