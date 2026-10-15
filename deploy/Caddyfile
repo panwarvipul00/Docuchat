@@ -1,0 +1,30 @@
+# Caddy obtains and renews a Let's Encrypt certificate for {$DOMAIN} on its own,
+# and redirects HTTP to HTTPS.
+{$DOMAIN} {
+	# Uploads are capped at 20 MB by Django; leave headroom for multipart overhead.
+	request_body {
+		max_size 25MB
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8000 {
+			# Send each SSE token to the browser immediately instead of buffering.
+			flush_interval -1
+		}
+	}
+
+	handle /admin* {
+		reverse_proxy backend:8000
+	}
+
+	# Django admin CSS/JS, collected into the shared `static` volume.
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy frontend:3000
+	}
+}
