@@ -36,26 +36,43 @@ export function linkifyCitations(markdown: string): string {
     .join("\n");
 }
 
-function CitationBadge({ index, source }: { index: number; source?: Citation }) {
+function CitationBadge({
+  index,
+  source,
+  onOpen,
+}: {
+  index: number;
+  source?: Citation;
+  onOpen?: (source: Citation) => void;
+}) {
   const label = source ? `${source.title}, page ${source.page}` : `Source ${index}`;
+  const clickable = Boolean(source && onOpen);
   return (
-    <span
-      title={label}
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={() => source && onOpen?.(source)}
+      title={clickable ? `Show source: ${label}` : label}
       aria-label={`Source ${index}: ${label}`}
-      className="mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px cursor-help items-center justify-center rounded-full bg-accent-soft px-1 align-middle text-[10px] font-bold leading-none text-accent-fg ring-1 ring-accent/40"
+      className="mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded-full bg-accent-soft px-1 align-middle text-[10px] font-bold leading-none text-accent-fg ring-1 ring-accent/40 transition enabled:cursor-pointer enabled:hover:bg-accent enabled:hover:text-fg disabled:cursor-help"
     >
       {index}
-    </span>
+    </button>
   );
 }
 
-function buildComponents(sources: Citation[]): Components {
+function buildComponents(
+  sources: Citation[],
+  onCitationClick?: (source: Citation) => void,
+): Components {
   const byIndex = new Map(sources.map((s) => [s.index, s]));
   return {
     a: ({ href, children }) => {
       if (href?.startsWith("#cite-")) {
         const index = Number(href.slice(6));
-        return <CitationBadge index={index} source={byIndex.get(index)} />;
+        return (
+          <CitationBadge index={index} source={byIndex.get(index)} onOpen={onCitationClick} />
+        );
       }
       return (
         <a
@@ -126,10 +143,21 @@ function buildComponents(sources: Citation[]): Components {
  * Renders an assistant answer. Raw HTML in the model output is ignored
  * (react-markdown's default), so a document can't inject markup into the page.
  */
-export function Markdown({ content, sources = [] }: { content: string; sources?: Citation[] }) {
+export function Markdown({
+  content,
+  sources = [],
+  onCitationClick,
+}: {
+  content: string;
+  sources?: Citation[];
+  onCitationClick?: (source: Citation) => void;
+}) {
   return (
     <div className="text-[15px] text-fg">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={buildComponents(sources)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={buildComponents(sources, onCitationClick)}
+      >
         {linkifyCitations(content)}
       </ReactMarkdown>
     </div>

@@ -38,6 +38,16 @@ class WorkspaceConversationListCreateView(generics.ListCreateAPIView):
         serializer.save(workspace=workspace, user=self.request.user)
 
 
+class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET / PATCH (rename) / DELETE one of the user's conversations."""
+
+    serializer_class = ConversationSerializer
+    http_method_names = ["get", "patch", "delete", "head", "options"]
+
+    def get_queryset(self) -> QuerySet[Conversation]:
+        return user_conversations(self.request)
+
+
 class ConversationMessageListView(generics.ListAPIView):
     serializer_class = MessageSerializer
 

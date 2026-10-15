@@ -165,10 +165,10 @@ POST   /api/conversations/{id}/ask/     (streams answer via SSE)
 - **Done when:** asking a question returns a streamed, cited answer.
 
 ### Phase 4 — Frontend Polish (Week 4)
-- [ ] Chat UI: sidebar with conversations, message bubbles, markdown rendering
-- [ ] Clickable citations showing the source chunk/page
-- [ ] Document library: upload drag-and-drop, status, delete
-- [ ] Loading, empty, and error states; responsive layout
+- [x] Chat UI: sidebar with conversations, message bubbles, markdown rendering
+- [x] Clickable citations showing the source chunk/page
+- [x] Document library: upload drag-and-drop, status, delete
+- [x] Loading, empty, and error states; responsive layout
 
 ### Phase 5 — Advanced Features (Week 5)
 - [ ] Hybrid search (Postgres full-text + vector, Reciprocal Rank Fusion)

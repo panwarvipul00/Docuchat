@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 
 from apps.documents.models import Document
 from apps.workspaces.models import WorkspaceMember
+from tests.test_retrieval import add_document
 
 pytestmark = pytest.mark.django_db
 
@@ -124,3 +125,28 @@ def test_plain_member_cannot_delete_others_document(auth_client, workspace, othe
 
 def test_documents_require_auth(api_client, workspace):
     assert api_client.get(f"/api/workspaces/{workspace.id}/documents/").status_code == 401
+
+
+# --- chunk detail (citation source passage) ---
+
+
+def test_get_chunk_returns_source_passage(auth_client, workspace, user):
+    doc = add_document(workspace, user, ["first page text", "second page text"], title="Guide")
+    chunk = doc.chunks.get(chunk_index=1)
+    res = auth_client.get(f"/api/chunks/{chunk.id}/")
+    assert res.status_code == 200
+    assert res.data == {
+        "id": chunk.id,
+        "document_id": doc.id,
+        "document_title": "Guide",
+        "page_number": 2,
+        "chunk_index": 1,
+        "content": "second page text",
+    }
+
+
+def test_cannot_read_other_workspace_chunk(auth_client, api_client, other_user, other_workspace):
+    doc = add_document(other_workspace, other_user, ["bob's secret"])
+    chunk_id = doc.chunks.get().id
+    assert auth_client.get(f"/api/chunks/{chunk_id}/").status_code == 404
+    assert api_client.get(f"/api/chunks/{chunk_id}/").status_code == 401

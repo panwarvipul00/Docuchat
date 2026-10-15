@@ -22,8 +22,18 @@ const NAV = [
   { href: "/chat", label: "Chat", Icon: ChatIcon },
 ];
 
-/** Layout for signed-in pages: guards the route and renders the top nav. */
-export function AppShell({ children }: { children: React.ReactNode }) {
+/**
+ * Layout for signed-in pages: guards the route and renders the top nav.
+ * `fullWidth` drops the centered column so a page (chat) can manage its own
+ * full-height, edge-to-edge layout.
+ */
+export function AppShell({
+  children,
+  fullWidth = false,
+}: {
+  children: React.ReactNode;
+  fullWidth?: boolean;
+}) {
   const { status } = useAuth();
   const router = useRouter();
 
@@ -43,7 +53,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <WorkspaceProvider>
       <div className="min-h-screen bg-bg">
         <TopNav />
-        <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+        {fullWidth ? (
+          <main>{children}</main>
+        ) : (
+          <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+        )}
       </div>
     </WorkspaceProvider>
   );
