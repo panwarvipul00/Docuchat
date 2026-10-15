@@ -129,6 +129,16 @@ CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 # Let the frontend read the server's file name on downloads (answer export).
 CORS_EXPOSE_HEADERS = ["Content-Disposition"]
 
+# --- Production (behind a TLS-terminating reverse proxy, e.g. Caddy) ---
+# The Django admin's login form is CSRF-protected and checks the Origin header.
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+if env_bool("DJANGO_BEHIND_HTTPS_PROXY"):
+    # The proxy talks plain HTTP to gunicorn; trust its header so Django knows
+    # the original request was HTTPS (secure cookies, correct absolute URLs).
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
 # --- Celery ---
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
