@@ -174,6 +174,12 @@ CORS_EXPOSE_HEADERS = ["Content-Disposition", "Retry-After"]
 # --- Production (behind a TLS-terminating reverse proxy, e.g. Caddy) ---
 # The Django admin's login form is CSRF-protected and checks the Origin header.
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+# Render sets this to the service's public hostname (e.g. docuchat-api.onrender.com),
+# so the deploy works without hand-copying the URL into two settings.
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
 if env_bool("DJANGO_BEHIND_HTTPS_PROXY"):
     # The proxy talks plain HTTP to gunicorn; trust its header so Django knows
     # the original request was HTTPS (secure cookies, correct absolute URLs).

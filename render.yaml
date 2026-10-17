@@ -1,0 +1,70 @@
+# Render Blueprint: Render → New → Blueprint → pick this repo. See docs/DEPLOY-RENDER.md.
+#
+# Free plan layout:
+#   docuchat-api    Django API + Celery worker in one container (render-start.sh)
+#   docuchat-web    Next.js frontend
+#   docuchat-redis  Celery broker + rate-limit counters
+# Postgres (with pgvector) comes from DATABASE_URL: Neon is recommended because
+# its free tier doesn't expire.
+#
+# Values marked `sync: false` are asked for when you create the Blueprint.
+
+services:
+  - type: web
+    name: docuchat-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: sh render-start.sh
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      # Render terminates HTTPS and forwards plain HTTP; the public hostname is
+      # added to ALLOWED_HOSTS automatically from RENDER_EXTERNAL_HOSTNAME.
+      - key: DJANGO_BEHIND_HTTPS_PROXY
+        value: "True"
+      - key: DJANGO_NUM_PROXIES
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: docuchat-redis
+          property: connectionString
+      # The frontend's URL, e.g. https://docuchat-web.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: EMBEDDING_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DAILY_TOKEN_BUDGET
+        value: "200000"
+
+  - type: web
+    name: docuchat-web
+    runtime: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Baked into the JS bundle at build time, e.g. https://docuchat-api.onrender.com/api
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+
+  - type: keyvalue
+    name: docuchat-redis
+    plan: free
+    # Only reachable from your Render services, not the internet.
+    ipAllowList: []
+    # Celery's queue must never be evicted to free memory.
+    maxmemoryPolicy: noeviction
