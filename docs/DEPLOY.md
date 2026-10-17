@@ -1,5 +1,7 @@
 # Deploying DocuChat for free (Oracle Cloud Always Free VM)
 
+> Prefer a managed platform? See [DEPLOY-RENDER.md](DEPLOY-RENDER.md) for Render.
+
 The whole stack (Postgres + pgvector, Redis, Django API, Celery worker, Next.js)
 runs on one free VM with Docker Compose. Caddy sits in front with an automatic
 HTTPS certificate. Gemini's free tier provides the LLM and embeddings.
