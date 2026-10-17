@@ -14,6 +14,7 @@ services:
     name: docuchat-api
     runtime: docker
     plan: free
+    region: ohio  # same region as the Neon database (AWS us-east-2) for low latency
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     dockerCommand: sh render-start.sh
@@ -51,6 +52,7 @@ services:
     name: docuchat-web
     runtime: node
     plan: free
+    region: ohio
     rootDir: frontend
     buildCommand: npm ci && npm run build
     startCommand: npm start
@@ -64,6 +66,7 @@ services:
   - type: keyvalue
     name: docuchat-redis
     plan: free
+    region: ohio  # must match the API's region to be reachable on the private network
     # Only reachable from your Render services, not the internet.
     ipAllowList: []
     # Celery's queue must never be evicted to free memory.
